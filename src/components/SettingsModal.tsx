@@ -1,45 +1,19 @@
-import React, { useState } from 'react';
+import React from 'react';
 import { Modal, View, Text, Switch, TouchableOpacity, StyleSheet, Platform, StatusBar } from 'react-native';
-import DateTimePicker, { DateTimePickerEvent } from '@react-native-community/datetimepicker';
+import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useTheme, NotificationFrequency } from '../context/ThemeContext';
+import { useTheme } from '../context/ThemeContext';
 
 interface Props {
   visible: boolean;
   onClose: () => void;
+  onOpenGroups: () => void;
 }
 
-const FREQUENCIES: { label: string; sublabel: string; value: NotificationFrequency }[] = [
-  { label: 'Daily', sublabel: 'Every day', value: 'daily' },
-  { label: 'Weekly', sublabel: 'Every Monday', value: 'weekly' },
-  { label: 'Off', sublabel: 'No reminders', value: 'off' },
-];
-
-function formatTime(hour: number, minute: number): string {
-  const period = hour >= 12 ? 'PM' : 'AM';
-  const h = hour % 12 === 0 ? 12 : hour % 12;
-  const m = minute.toString().padStart(2, '0');
-  return `${h}:${m} ${period}`;
-}
-
-export function SettingsModal({ visible, onClose }: Props) {
+export function SettingsModal({ visible, onClose, onOpenGroups }: Props) {
   const { theme, settings, updateSettings } = useTheme();
   const insets = useSafeAreaInsets();
   const topPadding = Platform.OS === 'ios' ? insets.top + 14 : (StatusBar.currentHeight ?? 0) + 14;
-  const [showTimePicker, setShowTimePicker] = useState(false);
-
-  const pickerDate = new Date();
-  pickerDate.setHours(settings.notificationHour, settings.notificationMinute, 0, 0);
-
-  const handleTimeChange = (_event: DateTimePickerEvent, date?: Date) => {
-    if (Platform.OS === 'android') setShowTimePicker(false);
-    if (date) {
-      updateSettings({
-        notificationHour: date.getHours(),
-        notificationMinute: date.getMinutes(),
-      });
-    }
-  };
 
   return (
     <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
@@ -52,7 +26,6 @@ export function SettingsModal({ visible, onClose }: Props) {
           </TouchableOpacity>
         </View>
 
-        {/* Appearance */}
         <Text style={[styles.sectionHeader, { color: theme.textSecondary }]}>Appearance</Text>
         <View style={[styles.card, { backgroundColor: theme.card }]}>
           <View style={styles.row}>
@@ -66,66 +39,29 @@ export function SettingsModal({ visible, onClose }: Props) {
           </View>
         </View>
 
-        {/* Reminders */}
         <Text style={[styles.sectionHeader, { color: theme.textSecondary }]}>Reminders</Text>
         <View style={[styles.card, { backgroundColor: theme.card }]}>
-          {FREQUENCIES.map((f, i) => (
-            <View key={f.value}>
-              <TouchableOpacity
-                style={styles.freqRow}
-                onPress={() => updateSettings({ notificationFrequency: f.value })}
-              >
-                <View style={styles.freqLabels}>
-                  <Text style={[styles.rowLabel, { color: theme.textPrimary }]}>{f.label}</Text>
-                  <Text style={[styles.sublabel, { color: theme.textSecondary }]}>{f.sublabel}</Text>
-                </View>
-                {settings.notificationFrequency === f.value && (
-                  <Text style={[styles.selectedCheck, { color: theme.accent }]}>✓</Text>
-                )}
-              </TouchableOpacity>
-              {i < FREQUENCIES.length - 1 && (
-                <View style={[styles.separator, { backgroundColor: theme.border }]} />
-              )}
-            </View>
-          ))}
+          <View style={styles.row}>
+            <Text style={[styles.rowLabel, { color: theme.textPrimary }]}>Enable Reminders</Text>
+            <Switch
+              value={settings.remindersEnabled}
+              onValueChange={val => updateSettings({ remindersEnabled: val })}
+              trackColor={{ false: '#E5E5EA', true: theme.accent }}
+              thumbColor="#fff"
+            />
+          </View>
+          <View style={[styles.separator, { backgroundColor: theme.border }]} />
+          <TouchableOpacity
+            style={[styles.row, !settings.remindersEnabled && styles.rowDisabled]}
+            onPress={onOpenGroups}
+            disabled={!settings.remindersEnabled}
+          >
+            <Text style={[styles.rowLabel, { color: settings.remindersEnabled ? theme.textPrimary : theme.textSecondary }]}>
+              Groups & Schedules
+            </Text>
+            <Ionicons name="chevron-forward" size={18} color={theme.textSecondary} />
+          </TouchableOpacity>
         </View>
-
-        {/* Time — only shown when notifications are on */}
-        {settings.notificationFrequency !== 'off' && (
-          <>
-            <Text style={[styles.sectionHeader, { color: theme.textSecondary }]}>Reminder Time</Text>
-            <View style={[styles.card, { backgroundColor: theme.card }]}>
-              <TouchableOpacity style={styles.row} onPress={() => setShowTimePicker(true)}>
-                <Text style={[styles.rowLabel, { color: theme.textPrimary }]}>Time</Text>
-                <Text style={[styles.timeValue, { color: theme.accent }]}>
-                  {formatTime(settings.notificationHour, settings.notificationMinute)}
-                </Text>
-              </TouchableOpacity>
-
-              {/* iOS: show inline below the row */}
-              {showTimePicker && Platform.OS === 'ios' && (
-                <DateTimePicker
-                  value={pickerDate}
-                  mode="time"
-                  display="spinner"
-                  onChange={handleTimeChange}
-                  textColor={theme.textPrimary}
-                  style={styles.iosPicker}
-                />
-              )}
-            </View>
-          </>
-        )}
-
-        {/* Android: renders as a modal dialog, shown via state */}
-        {showTimePicker && Platform.OS === 'android' && (
-          <DateTimePicker
-            value={pickerDate}
-            mode="time"
-            display="default"
-            onChange={handleTimeChange}
-          />
-        )}
       </View>
     </Modal>
   );
@@ -170,18 +106,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 14,
   },
+  rowDisabled: { opacity: 0.4 },
   rowLabel: { fontSize: 16 },
-  freqRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 16,
-    paddingVertical: 14,
-  },
-  freqLabels: { flex: 1 },
-  sublabel: { fontSize: 13, marginTop: 2 },
-  selectedCheck: { fontSize: 18, fontWeight: '600' },
-  separator: { height: StyleSheet.hairlineWidth, marginLeft: 16 },
-  timeValue: { fontSize: 16, fontWeight: '500' },
-  iosPicker: { marginBottom: 8 },
+  separator: { height: StyleSheet.hairlineWidth, marginHorizontal: 16 },
 });

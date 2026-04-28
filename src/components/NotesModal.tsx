@@ -15,6 +15,7 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Friend, FriendNote } from '../types/Friend';
+import { Group } from '../types/Group';
 import { useTheme } from '../context/ThemeContext';
 
 interface Props {
@@ -24,6 +25,8 @@ interface Props {
   onUpdateNote: (friendId: string, noteId: string, updates: Partial<Pick<FriendNote, 'content' | 'pinned'>>) => void;
   onDeleteNote: (friendId: string, noteId: string) => void;
   onConvertCheckIn: (friendId: string, checkInTs: number, content: string) => void;
+  groups: Group[];
+  onMoveGroup: (friendId: string, groupId: string) => void;
 }
 
 type TimelineItem =
@@ -176,7 +179,7 @@ function CheckInRow({ ts, theme, onConvertToNote }: {
   );
 }
 
-export function NotesModal({ friend, visible, onClose, onUpdateNote, onDeleteNote, onConvertCheckIn }: Props) {
+export function NotesModal({ friend, visible, onClose, onUpdateNote, onDeleteNote, onConvertCheckIn, groups, onMoveGroup }: Props) {
   const { theme } = useTheme();
   const insets = useSafeAreaInsets();
   const topPadding = Platform.OS === 'ios' ? insets.top + 14 : (StatusBar.currentHeight ?? 0) + 14;
@@ -184,6 +187,22 @@ export function NotesModal({ friend, visible, onClose, onUpdateNote, onDeleteNot
   if (!friend) return null;
 
   const timeline = buildTimeline(friend);
+  const currentGroup = groups.find(g => g.id === friend.groupId);
+
+  const handleGroupPress = () => {
+    if (groups.length <= 1) return;
+    Alert.alert(
+      'Move to Group',
+      undefined,
+      [
+        ...groups.map(g => ({
+          text: g.id === friend.groupId ? `${g.name} ✓` : g.name,
+          onPress: () => { if (g.id !== friend.groupId) onMoveGroup(friend.id, g.id); },
+        })),
+        { text: 'Cancel', style: 'cancel' as const },
+      ],
+    );
+  };
 
   return (
     <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
@@ -195,6 +214,20 @@ export function NotesModal({ friend, visible, onClose, onUpdateNote, onDeleteNot
             <Text style={[styles.doneButton, { color: theme.accent }]}>Done</Text>
           </TouchableOpacity>
         </View>
+
+        {currentGroup && (
+          <TouchableOpacity
+            style={[styles.groupRow, { borderBottomColor: theme.border }]}
+            onPress={handleGroupPress}
+            disabled={groups.length <= 1}
+          >
+            <Text style={[styles.groupLabel, { color: theme.textSecondary }]}>Group</Text>
+            <View style={styles.groupRight}>
+              <Text style={[styles.groupName, { color: theme.textPrimary }]}>{currentGroup.name}</Text>
+              {groups.length > 1 && <Ionicons name="chevron-forward" size={16} color={theme.textSecondary} style={{ marginLeft: 4 }} />}
+            </View>
+          </TouchableOpacity>
+        )}
 
         {timeline.length === 0 ? (
           <View style={styles.empty}>
@@ -243,6 +276,17 @@ const styles = StyleSheet.create({
   },
   title: { fontSize: 17, fontWeight: '600' },
   doneButton: { fontSize: 17, fontWeight: '600', width: 60, textAlign: 'right' },
+  groupRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 20,
+    paddingVertical: 12,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+  },
+  groupLabel: { fontSize: 14 },
+  groupRight: { flexDirection: 'row', alignItems: 'center' },
+  groupName: { fontSize: 14, fontWeight: '500' },
   list: { padding: 16, gap: 10 },
   noteCard: {
     borderRadius: 14,

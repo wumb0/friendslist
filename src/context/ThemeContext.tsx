@@ -3,20 +3,14 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 
 export const SETTINGS_KEY = 'app_settings_v1';
 
-export type NotificationFrequency = 'daily' | 'weekly' | 'off';
-
 export interface AppSettings {
   darkMode: boolean;
-  notificationFrequency: NotificationFrequency;
-  notificationHour: number;
-  notificationMinute: number;
+  remindersEnabled: boolean;
 }
 
 const defaultSettings: AppSettings = {
   darkMode: false,
-  notificationFrequency: 'daily',
-  notificationHour: 9,
-  notificationMinute: 0,
+  remindersEnabled: true,
 };
 
 export interface Theme {

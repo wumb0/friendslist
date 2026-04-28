@@ -8,6 +8,7 @@ export interface FriendNote {
 export interface Friend {
   id: string;
   name: string;
+  groupId: string;
   lastCheckedIn: number | null;
   createdAt: number;
   notes: FriendNote[];

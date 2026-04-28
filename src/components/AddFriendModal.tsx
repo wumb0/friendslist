@@ -10,21 +10,25 @@ import {
   ActivityIndicator,
   Platform,
   StatusBar,
+  ScrollView,
 } from 'react-native';
 import * as Contacts from 'expo-contacts';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme } from '../context/ThemeContext';
+import { Group } from '../types/Group';
 
 interface Props {
   visible: boolean;
   onClose: () => void;
-  onAdd: (names: string[]) => void;
+  onAdd: (names: string[], groupId: string) => void;
   existingNames: Set<string>;
+  groups: Group[];
+  defaultGroupId: string;
 }
 
 type Tab = 'manual' | 'contacts';
 
-export function AddFriendModal({ visible, onClose, onAdd, existingNames }: Props) {
+export function AddFriendModal({ visible, onClose, onAdd, existingNames, groups, defaultGroupId }: Props) {
   const { theme } = useTheme();
   const insets = useSafeAreaInsets();
   const topPadding = Platform.OS === 'ios' ? insets.top + 14 : (StatusBar.currentHeight ?? 0) + 14;
@@ -35,6 +39,7 @@ export function AddFriendModal({ visible, onClose, onAdd, existingNames }: Props
   const [loadingContacts, setLoadingContacts] = useState(false);
   const [contactsPermission, setContactsPermission] = useState<'granted' | 'denied' | 'unknown'>('unknown');
   const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [selectedGroupId, setSelectedGroupId] = useState(defaultGroupId);
 
   useEffect(() => {
     if (!visible) {
@@ -42,8 +47,9 @@ export function AddFriendModal({ visible, onClose, onAdd, existingNames }: Props
       setContactsFilter('');
       setTab('manual');
       setSelected(new Set());
+      setSelectedGroupId(defaultGroupId);
     }
-  }, [visible]);
+  }, [visible, defaultGroupId]);
 
   const loadContacts = async () => {
     setLoadingContacts(true);
@@ -69,7 +75,7 @@ export function AddFriendModal({ visible, onClose, onAdd, existingNames }: Props
   const handleManualAdd = () => {
     const trimmed = name.trim();
     if (!trimmed) return;
-    onAdd([trimmed]);
+    onAdd([trimmed], selectedGroupId);
     onClose();
   };
 
@@ -84,7 +90,7 @@ export function AddFriendModal({ visible, onClose, onAdd, existingNames }: Props
 
   const handleAddSelected = () => {
     if (selected.size === 0) return;
-    onAdd(Array.from(selected));
+    onAdd(Array.from(selected), selectedGroupId);
     onClose();
   };
 
@@ -105,6 +111,28 @@ export function AddFriendModal({ visible, onClose, onAdd, existingNames }: Props
           <Text style={[styles.title, { color: theme.textPrimary }]}>Add Friend</Text>
           <View style={{ width: 60 }} />
         </View>
+
+        {groups.length > 1 && (
+          <View style={styles.groupPickerWrapper}>
+            <Text style={[styles.groupPickerLabel, { color: theme.textSecondary }]}>Add to</Text>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.groupPills}>
+              {groups.map(g => (
+                <TouchableOpacity
+                  key={g.id}
+                  style={[
+                    styles.pill,
+                    { borderColor: theme.border, backgroundColor: selectedGroupId === g.id ? theme.accent : theme.card },
+                  ]}
+                  onPress={() => setSelectedGroupId(g.id)}
+                >
+                  <Text style={[styles.pillText, { color: selectedGroupId === g.id ? '#fff' : theme.textPrimary }]}>
+                    {g.name}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+          </View>
+        )}
 
         <View style={styles.segmentWrapper}>
           <View style={[styles.segment, { backgroundColor: theme.segment }]}>
@@ -220,6 +248,11 @@ const styles = StyleSheet.create({
   },
   title: { fontSize: 17, fontWeight: '600' },
   cancelButton: { fontSize: 17, width: 60 },
+  groupPickerWrapper: { paddingHorizontal: 20, paddingTop: 14, flexDirection: 'row', alignItems: 'center', gap: 10 },
+  groupPickerLabel: { fontSize: 14, fontWeight: '500' },
+  groupPills: { flexDirection: 'row', gap: 8 },
+  pill: { paddingHorizontal: 14, paddingVertical: 7, borderRadius: 20, borderWidth: 1 },
+  pillText: { fontSize: 14, fontWeight: '500' },
   segmentWrapper: { paddingHorizontal: 20, paddingVertical: 16 },
   segment: { flexDirection: 'row', borderRadius: 10, padding: 2 },
   segmentTab: { flex: 1, paddingVertical: 8, alignItems: 'center', borderRadius: 8 },

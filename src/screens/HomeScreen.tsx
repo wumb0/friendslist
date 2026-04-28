@@ -1,43 +1,50 @@
-import React, { useState, useEffect } from 'react';
-import { View, Text, FlatList, TouchableOpacity, StyleSheet, StatusBar } from 'react-native';
+import React, { useState } from 'react';
+import { View, Text, SectionList, TouchableOpacity, StyleSheet, StatusBar } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useFriends } from '../hooks/useFriends';
+import { useGroups } from '../hooks/useGroups';
 import { FriendCard } from '../components/FriendCard';
 import { AddFriendModal } from '../components/AddFriendModal';
 import { NotesModal } from '../components/NotesModal';
 import { QuickNoteModal } from '../components/QuickNoteModal';
 import { SettingsModal } from '../components/SettingsModal';
+import { GroupsModal } from '../components/GroupsModal';
 import { Toast } from '../components/Toast';
 import { Friend } from '../types/Friend';
+import { Group } from '../types/Group';
 import { requestNotificationPermissions } from '../notifications/scheduler';
 import { useTheme } from '../context/ThemeContext';
+import { useEffect } from 'react';
+
+type FriendSection = { group: Group; data: Friend[] };
 
 export function HomeScreen() {
-  const { theme, settings } = useTheme();
-  const { friends, loading, addFriends, checkIn, addNote, updateNote, deleteNote, deleteFriend, convertCheckInToNote } = useFriends({
-    notificationFrequency: settings.notificationFrequency,
-    notificationHour: settings.notificationHour,
-    notificationMinute: settings.notificationMinute,
-  });
+  const { theme } = useTheme();
+  const { friends, loading, addFriends, checkIn, addNote, updateNote, deleteNote, deleteFriend, convertCheckInToNote, moveToGroup, moveGroupMembers } = useFriends();
+  const { groups, loading: groupsLoading, addGroup, updateGroup, deleteGroup } = useGroups(friends);
 
   const [showAdd, setShowAdd] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
+  const [showGroups, setShowGroups] = useState(false);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
-
-  const showToast = (name: string) => setToastMessage(`Checked in with ${name}`);
   const [selectedFriendId, setSelectedFriendId] = useState<string | null>(null);
   const [quickNoteFriend, setQuickNoteFriend] = useState<Friend | null>(null);
   const [quickNoteExisting, setQuickNoteExisting] = useState<{ id: string; content: string } | null>(null);
 
-  // Always pass the live friend object so note edits/pins reflect immediately
   const selectedFriend = selectedFriendId ? (friends.find(f => f.id === selectedFriendId) ?? null) : null;
 
-  useEffect(() => {
-    requestNotificationPermissions();
-  }, []);
+  useEffect(() => { requestNotificationPermissions(); }, []);
 
   const existingNames = new Set(friends.map(f => f.name.toLowerCase()));
+
+  const sections: FriendSection[] = groups
+    .map(group => ({ group, data: friends.filter(f => f.groupId === group.id) }))
+    .filter(s => s.data.length > 0);
+
+  const defaultGroupId = groups[0]?.id ?? '';
+
+  const showToast = (name: string) => setToastMessage(`Checked in with ${name}`);
 
   const handleCheckIn = (id: string) => {
     const name = friends.find(f => f.id === id)?.name;
@@ -72,6 +79,8 @@ export function HomeScreen() {
     setQuickNoteExisting(null);
   };
 
+  const isEmpty = !loading && friends.length === 0;
+
   return (
     <SafeAreaView style={[styles.safe, { backgroundColor: theme.background }]}>
       <StatusBar barStyle={theme.isDark ? 'light-content' : 'dark-content'} />
@@ -86,7 +95,7 @@ export function HomeScreen() {
           </TouchableOpacity>
         </View>
 
-        {!loading && friends.length === 0 ? (
+        {isEmpty ? (
           <View style={styles.empty}>
             <Text style={[styles.emptyTitle, { color: theme.textPrimary }]}>No friends yet</Text>
             <Text style={[styles.emptySubtitle, { color: theme.textSecondary }]}>
@@ -94,8 +103,8 @@ export function HomeScreen() {
             </Text>
           </View>
         ) : (
-          <FlatList
-            data={friends}
+          <SectionList<Friend, FriendSection>
+            sections={sections}
             keyExtractor={item => item.id}
             renderItem={({ item }) => (
               <FriendCard
@@ -106,8 +115,16 @@ export function HomeScreen() {
                 onAddNote={handleAddNote}
               />
             )}
+            renderSectionHeader={({ section }) =>
+              groups.length > 1 ? (
+                <Text style={[styles.sectionHeader, { color: theme.textSecondary, backgroundColor: theme.background }]}>
+                  {section.group.name}
+                </Text>
+              ) : null
+            }
             contentContainerStyle={styles.list}
             showsVerticalScrollIndicator={false}
+            stickySectionHeadersEnabled={false}
           />
         )}
 
@@ -115,6 +132,7 @@ export function HomeScreen() {
           style={[styles.fab, { backgroundColor: theme.accent, shadowColor: theme.accent }]}
           onPress={() => setShowAdd(true)}
           activeOpacity={0.85}
+          disabled={groupsLoading || groups.length === 0}
         >
           <Text style={styles.fabIcon}>+</Text>
         </TouchableOpacity>
@@ -127,6 +145,8 @@ export function HomeScreen() {
         onClose={() => setShowAdd(false)}
         onAdd={addFriends}
         existingNames={existingNames}
+        groups={groups}
+        defaultGroupId={defaultGroupId}
       />
 
       <NotesModal
@@ -136,6 +156,8 @@ export function HomeScreen() {
         onUpdateNote={updateNote}
         onDeleteNote={deleteNote}
         onConvertCheckIn={convertCheckInToNote}
+        groups={groups}
+        onMoveGroup={moveToGroup}
       />
 
       <QuickNoteModal
@@ -149,6 +171,18 @@ export function HomeScreen() {
       <SettingsModal
         visible={showSettings}
         onClose={() => setShowSettings(false)}
+        onOpenGroups={() => { setShowSettings(false); setShowGroups(true); }}
+      />
+
+      <GroupsModal
+        visible={showGroups}
+        onClose={() => setShowGroups(false)}
+        groups={groups}
+        friends={friends}
+        onAddGroup={addGroup}
+        onUpdateGroup={updateGroup}
+        onDeleteGroup={deleteGroup}
+        onMoveGroupMembers={moveGroupMembers}
       />
     </SafeAreaView>
   );
@@ -166,6 +200,15 @@ const styles = StyleSheet.create({
     paddingBottom: 16,
   },
   heading: { fontSize: 34, fontWeight: '700' },
+  sectionHeader: {
+    fontSize: 13,
+    fontWeight: '600',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+    paddingHorizontal: 4,
+    paddingTop: 16,
+    paddingBottom: 8,
+  },
   list: { paddingHorizontal: 16, paddingBottom: 100 },
   empty: {
     flex: 1,

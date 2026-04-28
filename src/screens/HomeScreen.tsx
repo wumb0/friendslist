@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { View, Text, SectionList, TouchableOpacity, StyleSheet, StatusBar } from 'react-native';
+import React, { useState, useEffect } from 'react';
+import { View, Text, FlatList, ScrollView, TouchableOpacity, StyleSheet, StatusBar } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useFriends } from '../hooks/useFriends';
@@ -12,18 +12,15 @@ import { SettingsModal } from '../components/SettingsModal';
 import { GroupsModal } from '../components/GroupsModal';
 import { Toast } from '../components/Toast';
 import { Friend } from '../types/Friend';
-import { Group } from '../types/Group';
 import { requestNotificationPermissions } from '../notifications/scheduler';
 import { useTheme } from '../context/ThemeContext';
-import { useEffect } from 'react';
-
-type FriendSection = { group: Group; data: Friend[] };
 
 export function HomeScreen() {
   const { theme } = useTheme();
   const { friends, loading, addFriends, checkIn, addNote, updateNote, deleteNote, deleteFriend, convertCheckInToNote, moveToGroup, moveGroupMembers } = useFriends();
   const { groups, loading: groupsLoading, addGroup, updateGroup, deleteGroup } = useGroups(friends);
 
+  const [activeGroupId, setActiveGroupId] = useState<string>('');
   const [showAdd, setShowAdd] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [showGroups, setShowGroups] = useState(false);
@@ -32,17 +29,22 @@ export function HomeScreen() {
   const [quickNoteFriend, setQuickNoteFriend] = useState<Friend | null>(null);
   const [quickNoteExisting, setQuickNoteExisting] = useState<{ id: string; content: string } | null>(null);
 
+  // Keep activeGroupId pointing at a valid group
+  useEffect(() => {
+    if (groups.length === 0) return;
+    if (!groups.find(g => g.id === activeGroupId)) {
+      setActiveGroupId(groups[0].id);
+    }
+  }, [groups, activeGroupId]);
+
   const selectedFriend = selectedFriendId ? (friends.find(f => f.id === selectedFriendId) ?? null) : null;
 
   useEffect(() => { requestNotificationPermissions(); }, []);
 
   const existingNames = new Set(friends.map(f => f.name.toLowerCase()));
 
-  const sections: FriendSection[] = groups
-    .map(group => ({ group, data: friends.filter(f => f.groupId === group.id) }))
-    .filter(s => s.data.length > 0);
-
-  const defaultGroupId = groups[0]?.id ?? '';
+  const visibleFriends = friends.filter(f => f.groupId === activeGroupId);
+  const isEmpty = !loading && !groupsLoading && visibleFriends.length === 0;
 
   const showToast = (name: string) => setToastMessage(`Checked in with ${name}`);
 
@@ -79,8 +81,6 @@ export function HomeScreen() {
     setQuickNoteExisting(null);
   };
 
-  const isEmpty = !loading && friends.length === 0;
-
   return (
     <SafeAreaView style={[styles.safe, { backgroundColor: theme.background }]}>
       <StatusBar barStyle={theme.isDark ? 'light-content' : 'dark-content'} />
@@ -95,16 +95,40 @@ export function HomeScreen() {
           </TouchableOpacity>
         </View>
 
+        {groups.length > 1 && (
+          <View style={styles.groupTabsRow}>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.groupTabs}>
+              {groups.map(g => {
+                const active = g.id === activeGroupId;
+                return (
+                  <TouchableOpacity
+                    key={g.id}
+                    style={[styles.groupTab, { borderColor: theme.border, backgroundColor: active ? theme.accent : theme.card }]}
+                    onPress={() => setActiveGroupId(g.id)}
+                  >
+                    <Text style={[styles.groupTabText, { color: active ? '#fff' : theme.textPrimary }]}>
+                      {g.name}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </ScrollView>
+          </View>
+        )}
+
         {isEmpty ? (
           <View style={styles.empty}>
-            <Text style={[styles.emptyTitle, { color: theme.textPrimary }]}>No friends yet</Text>
+            <Text style={[styles.emptyTitle, { color: theme.textPrimary }]}>You have no friends!</Text>
+            <Text style={[styles.emptySubtitle, { color: theme.textSecondary }]}>
+              (no offense)
+            </Text>
             <Text style={[styles.emptySubtitle, { color: theme.textSecondary }]}>
               Tap + to add someone you want to stay in touch with.
             </Text>
           </View>
         ) : (
-          <SectionList<Friend, FriendSection>
-            sections={sections}
+            <FlatList
+              data={visibleFriends}
             keyExtractor={item => item.id}
             renderItem={({ item }) => (
               <FriendCard
@@ -115,16 +139,8 @@ export function HomeScreen() {
                 onAddNote={handleAddNote}
               />
             )}
-            renderSectionHeader={({ section }) =>
-              groups.length > 1 ? (
-                <Text style={[styles.sectionHeader, { color: theme.textSecondary, backgroundColor: theme.background }]}>
-                  {section.group.name}
-                </Text>
-              ) : null
-            }
             contentContainerStyle={styles.list}
-            showsVerticalScrollIndicator={false}
-            stickySectionHeadersEnabled={false}
+              showsVerticalScrollIndicator={false}
           />
         )}
 
@@ -146,7 +162,7 @@ export function HomeScreen() {
         onAdd={addFriends}
         existingNames={existingNames}
         groups={groups}
-        defaultGroupId={defaultGroupId}
+        defaultGroupId={activeGroupId}
       />
 
       <NotesModal
@@ -171,7 +187,7 @@ export function HomeScreen() {
       <SettingsModal
         visible={showSettings}
         onClose={() => setShowSettings(false)}
-        onOpenGroups={() => { setShowSettings(false); setShowGroups(true); }}
+        onOpenGroups={() => { setShowGroups(true); }}
       />
 
       <GroupsModal
@@ -200,15 +216,10 @@ const styles = StyleSheet.create({
     paddingBottom: 16,
   },
   heading: { fontSize: 34, fontWeight: '700' },
-  sectionHeader: {
-    fontSize: 13,
-    fontWeight: '600',
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-    paddingHorizontal: 4,
-    paddingTop: 16,
-    paddingBottom: 8,
-  },
+  groupTabsRow: { height: 50, marginBottom: 4 },
+  groupTabs: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, gap: 8 },
+  groupTab: { paddingHorizontal: 16, paddingVertical: 7, borderRadius: 20, borderWidth: 1 },
+  groupTabText: { fontSize: 14, fontWeight: '500' },
   list: { paddingHorizontal: 16, paddingBottom: 100 },
   empty: {
     flex: 1,

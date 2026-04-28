@@ -10,6 +10,7 @@ import {
   StatusBar,
   ScrollView,
   Alert,
+  ActionSheetIOS,
 } from 'react-native';
 import DateTimePicker, { DateTimePickerEvent } from '@react-native-community/datetimepicker';
 import { Ionicons } from '@expo/vector-icons';
@@ -109,17 +110,23 @@ export function GroupsModal({ visible, onClose, groups, friends, onAddGroup, onU
     const doDelete = async () => { await onDeleteGroup(id); setEditing(null); };
 
     if (members.length > 0) {
-      Alert.alert(
-        'Move Friends',
-        `Move ${members.length} ${members.length === 1 ? 'friend' : 'friends'} to:`,
-        [
+      const count = members.length;
+      const noun = count === 1 ? 'friend' : 'friends';
+      if (Platform.OS === 'ios') {
+        const options = [...otherGroups.map(g => g.name), 'Cancel'];
+        ActionSheetIOS.showActionSheetWithOptions(
+          { title: `Move ${count} ${noun} to:`, options, cancelButtonIndex: options.length - 1 },
+          async i => { if (i < otherGroups.length) { await onMoveGroupMembers(id, otherGroups[i].id); await doDelete(); } },
+        );
+      } else {
+        Alert.alert(`Move ${count} ${noun} to:`, undefined, [
           ...otherGroups.map(g => ({
             text: g.name,
             onPress: async () => { await onMoveGroupMembers(id, g.id); await doDelete(); },
           })),
           { text: 'Cancel', style: 'cancel' as const },
-        ],
-      );
+        ]);
+      }
       return;
     }
 
@@ -177,6 +184,7 @@ export function GroupsModal({ visible, onClose, groups, friends, onAddGroup, onU
                 placeholder="Group name"
                 placeholderTextColor={theme.placeholder}
                 autoFocus={editing.id === null}
+                maxLength={20}
               />
             </View>
 

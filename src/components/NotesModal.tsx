@@ -183,26 +183,12 @@ export function NotesModal({ friend, visible, onClose, onUpdateNote, onDeleteNot
   const { theme } = useTheme();
   const insets = useSafeAreaInsets();
   const topPadding = Platform.OS === 'ios' ? insets.top + 14 : (StatusBar.currentHeight ?? 0) + 14;
+  const [groupPickerVisible, setGroupPickerVisible] = useState(false);
 
   if (!friend) return null;
 
   const timeline = buildTimeline(friend);
   const currentGroup = groups.find(g => g.id === friend.groupId);
-
-  const handleGroupPress = () => {
-    if (groups.length <= 1) return;
-    Alert.alert(
-      'Move to Group',
-      undefined,
-      [
-        ...groups.map(g => ({
-          text: g.id === friend.groupId ? `${g.name} ✓` : g.name,
-          onPress: () => { if (g.id !== friend.groupId) onMoveGroup(friend.id, g.id); },
-        })),
-        { text: 'Cancel', style: 'cancel' as const },
-      ],
-    );
-  };
 
   return (
     <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
@@ -218,7 +204,7 @@ export function NotesModal({ friend, visible, onClose, onUpdateNote, onDeleteNot
         {currentGroup && (
           <TouchableOpacity
             style={[styles.groupRow, { borderBottomColor: theme.border }]}
-            onPress={handleGroupPress}
+            onPress={() => { if (groups.length > 1) setGroupPickerVisible(true); }}
             disabled={groups.length <= 1}
           >
             <Text style={[styles.groupLabel, { color: theme.textSecondary }]}>Group</Text>
@@ -228,6 +214,39 @@ export function NotesModal({ friend, visible, onClose, onUpdateNote, onDeleteNot
             </View>
           </TouchableOpacity>
         )}
+
+        <Modal visible={groupPickerVisible} transparent animationType="fade" onRequestClose={() => setGroupPickerVisible(false)}>
+          <TouchableWithoutFeedback onPress={() => setGroupPickerVisible(false)}>
+            <View style={styles.pickerOverlay}>
+              <TouchableWithoutFeedback>
+                <View style={[styles.pickerCard, { backgroundColor: theme.card }]}>
+                  <Text style={[styles.pickerTitle, { color: theme.textSecondary }]}>Move to Group</Text>
+                  {groups.map((g, i) => (
+                    <View key={g.id}>
+                      {i > 0 && <View style={[styles.pickerSep, { backgroundColor: theme.border }]} />}
+                      <TouchableOpacity
+                        style={styles.pickerRow}
+                        onPress={() => {
+                          if (g.id !== friend.groupId) onMoveGroup(friend.id, g.id);
+                          setGroupPickerVisible(false);
+                        }}
+                      >
+                        <Text style={[styles.pickerRowText, { color: g.id === friend.groupId ? theme.accent : theme.textPrimary }]}>
+                          {g.name}
+                        </Text>
+                        {g.id === friend.groupId && <Ionicons name="checkmark" size={18} color={theme.accent} />}
+                      </TouchableOpacity>
+                    </View>
+                  ))}
+                  <View style={[styles.pickerSep, { backgroundColor: theme.border }]} />
+                  <TouchableOpacity style={styles.pickerRow} onPress={() => setGroupPickerVisible(false)}>
+                    <Text style={[styles.pickerCancelText, { color: theme.textSecondary }]}>Cancel</Text>
+                  </TouchableOpacity>
+                </View>
+              </TouchableWithoutFeedback>
+            </View>
+          </TouchableWithoutFeedback>
+        </Modal>
 
         {timeline.length === 0 ? (
           <View style={styles.empty}>
@@ -356,4 +375,36 @@ const styles = StyleSheet.create({
   },
   emptyTitle: { fontSize: 20, fontWeight: '600', marginBottom: 8 },
   emptySubtitle: { fontSize: 15, textAlign: 'center', lineHeight: 22 },
+  pickerOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.4)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 32,
+  },
+  pickerCard: {
+    width: '100%',
+    borderRadius: 16,
+    overflow: 'hidden',
+  },
+  pickerTitle: {
+    fontSize: 13,
+    fontWeight: '600',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+    textAlign: 'center',
+    paddingTop: 16,
+    paddingBottom: 8,
+    paddingHorizontal: 16,
+  },
+  pickerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 20,
+    paddingVertical: 16,
+  },
+  pickerRowText: { fontSize: 16 },
+  pickerCancelText: { fontSize: 16, fontWeight: '500', width: '100%', textAlign: 'center' },
+  pickerSep: { height: StyleSheet.hairlineWidth, marginHorizontal: 0 },
 });

@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
-import { Modal, View, Text, Switch, TouchableOpacity, StyleSheet, Platform } from 'react-native';
+import { Modal, View, Text, Switch, TouchableOpacity, StyleSheet, Platform, StatusBar } from 'react-native';
 import DateTimePicker, { DateTimePickerEvent } from '@react-native-community/datetimepicker';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme, NotificationFrequency } from '../context/ThemeContext';
 
 interface Props {
@@ -23,6 +24,8 @@ function formatTime(hour: number, minute: number): string {
 
 export function SettingsModal({ visible, onClose }: Props) {
   const { theme, settings, updateSettings } = useTheme();
+  const insets = useSafeAreaInsets();
+  const topPadding = Platform.OS === 'ios' ? insets.top + 14 : (StatusBar.currentHeight ?? 0) + 14;
   const [showTimePicker, setShowTimePicker] = useState(false);
 
   const pickerDate = new Date();
@@ -41,7 +44,7 @@ export function SettingsModal({ visible, onClose }: Props) {
   return (
     <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
       <View style={[styles.container, { backgroundColor: theme.background }]}>
-        <View style={[styles.header, { backgroundColor: theme.header, borderBottomColor: theme.border }]}>
+        <View style={[styles.header, { backgroundColor: theme.header, borderBottomColor: theme.border, paddingTop: topPadding }]}>
           <View style={{ width: 60 }} />
           <Text style={[styles.title, { color: theme.textPrimary }]}>Settings</Text>
           <TouchableOpacity onPress={onClose} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
@@ -137,7 +140,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     paddingVertical: 14,
     borderBottomWidth: StyleSheet.hairlineWidth,
-    paddingTop: Platform.OS === 'ios' ? 56 : 14,
+    paddingTop: 14,
   },
   title: { fontSize: 17, fontWeight: '600' },
   doneButton: { fontSize: 17, fontWeight: '600', width: 60, textAlign: 'right' },

@@ -9,9 +9,11 @@ import {
   TouchableWithoutFeedback,
   StyleSheet,
   Platform,
+  StatusBar,
   Alert,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Friend, FriendNote } from '../types/Friend';
 import { useTheme } from '../context/ThemeContext';
 
@@ -176,6 +178,8 @@ function CheckInRow({ ts, theme, onConvertToNote }: {
 
 export function NotesModal({ friend, visible, onClose, onUpdateNote, onDeleteNote, onConvertCheckIn }: Props) {
   const { theme } = useTheme();
+  const insets = useSafeAreaInsets();
+  const topPadding = Platform.OS === 'ios' ? insets.top + 14 : (StatusBar.currentHeight ?? 0) + 14;
 
   if (!friend) return null;
 
@@ -184,7 +188,7 @@ export function NotesModal({ friend, visible, onClose, onUpdateNote, onDeleteNot
   return (
     <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
       <View style={[styles.container, { backgroundColor: theme.background }]}>
-        <View style={[styles.header, { backgroundColor: theme.header, borderBottomColor: theme.border }]}>
+        <View style={[styles.header, { backgroundColor: theme.header, borderBottomColor: theme.border, paddingTop: topPadding }]}>
           <View style={{ width: 60 }} />
           <Text style={[styles.title, { color: theme.textPrimary }]}>{friend.name}</Text>
           <TouchableOpacity onPress={onClose} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
@@ -235,7 +239,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     paddingVertical: 14,
     borderBottomWidth: StyleSheet.hairlineWidth,
-    paddingTop: Platform.OS === 'ios' ? 56 : 14,
+    paddingTop: 14,
   },
   title: { fontSize: 17, fontWeight: '600' },
   doneButton: { fontSize: 17, fontWeight: '600', width: 60, textAlign: 'right' },

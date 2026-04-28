@@ -9,8 +9,10 @@ import {
   StyleSheet,
   ActivityIndicator,
   Platform,
+  StatusBar,
 } from 'react-native';
 import * as Contacts from 'expo-contacts';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme } from '../context/ThemeContext';
 
 interface Props {
@@ -24,6 +26,8 @@ type Tab = 'manual' | 'contacts';
 
 export function AddFriendModal({ visible, onClose, onAdd, existingNames }: Props) {
   const { theme } = useTheme();
+  const insets = useSafeAreaInsets();
+  const topPadding = Platform.OS === 'ios' ? insets.top + 14 : (StatusBar.currentHeight ?? 0) + 14;
   const [tab, setTab] = useState<Tab>('manual');
   const [name, setName] = useState('');
   const [contacts, setContacts] = useState<Contacts.Contact[]>([]);
@@ -94,7 +98,7 @@ export function AddFriendModal({ visible, onClose, onAdd, existingNames }: Props
   return (
     <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
       <View style={[styles.container, { backgroundColor: theme.background }]}>
-        <View style={[styles.header, { backgroundColor: theme.header, borderBottomColor: theme.border }]}>
+        <View style={[styles.header, { backgroundColor: theme.header, borderBottomColor: theme.border, paddingTop: topPadding }]}>
           <TouchableOpacity onPress={onClose} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
             <Text style={[styles.cancelButton, { color: theme.accent }]}>Cancel</Text>
           </TouchableOpacity>
@@ -212,7 +216,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     paddingVertical: 14,
     borderBottomWidth: StyleSheet.hairlineWidth,
-    paddingTop: Platform.OS === 'ios' ? 56 : 14,
+    paddingTop: 14,
   },
   title: { fontSize: 17, fontWeight: '600' },
   cancelButton: { fontSize: 17, width: 60 },

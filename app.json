@@ -1,7 +1,7 @@
 {
   "expo": {
-    "name": "app",
-    "slug": "app",
+    "name": "friendslist",
+    "slug": "friendslist",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
@@ -22,7 +22,7 @@
       },
       "edgeToEdgeEnabled": true,
       "predictiveBackGestureEnabled": false,
-      "package": "com.wumb0.friendslist"
+      "package": "in.wumb0.friendslist"
     },
     "web": {
       "favicon": "./assets/favicon.png"

@@ -1,4 +1,5 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
+import { Appearance, NativeModules, Platform } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 export const SETTINGS_KEY = 'app_settings_v1';
@@ -85,9 +86,18 @@ const ThemeContext = createContext<ContextValue>({
 export function ThemeProvider({ children }: { children: React.ReactNode }) {
   const [settings, setSettings] = useState<AppSettings>(defaultSettings);
 
+  const applyDarkMode = (isDark: boolean) => {
+    Appearance.setColorScheme(isDark ? 'dark' : 'light');
+    if (Platform.OS === 'android') {
+      NativeModules.NightMode?.setNightMode(isDark);
+    }
+  };
+
   useEffect(() => {
     AsyncStorage.getItem(SETTINGS_KEY).then(json => {
-      if (json) setSettings({ ...defaultSettings, ...JSON.parse(json) });
+      const loaded: AppSettings = json ? { ...defaultSettings, ...JSON.parse(json) } : defaultSettings;
+      setSettings(loaded);
+      applyDarkMode(loaded.darkMode);
     });
   }, []);
 
@@ -95,6 +105,9 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
     setSettings(prev => {
       const next = { ...prev, ...patch };
       AsyncStorage.setItem(SETTINGS_KEY, JSON.stringify(next));
+      if (patch.darkMode !== undefined) {
+        applyDarkMode(patch.darkMode);
+      }
       return next;
     });
   };

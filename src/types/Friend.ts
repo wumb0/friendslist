@@ -1,3 +1,7 @@
+import { SignificantDate } from './SignificantDate';
+
+export { SignificantDate };
+
 export interface FriendNote {
   id: string;
   content: string;
@@ -13,4 +17,5 @@ export interface Friend {
   createdAt: number;
   notes: FriendNote[];
   checkIns: number[];
+  significantDates?: SignificantDate[];
 }

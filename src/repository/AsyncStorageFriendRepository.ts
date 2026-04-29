@@ -1,5 +1,5 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { Friend, FriendNote } from '../types/Friend';
+import { Friend, FriendNote, SignificantDate } from '../types/Friend';
 import { FriendRepository } from './FriendRepository';
 import { generateId } from '../utils/uuid';
 
@@ -18,6 +18,7 @@ function migrate(raw: any): Friend {
     ...raw,
     notes,
     checkIns: Array.isArray(raw.checkIns) ? raw.checkIns : [],
+    significantDates: Array.isArray(raw.significantDates) ? raw.significantDates : [],
   };
 }
 
@@ -122,6 +123,44 @@ export class AsyncStorageFriendRepository implements FriendRepository {
         ...friends[idx],
         checkIns: friends[idx].checkIns.filter(ci => ci !== checkInTs),
         notes: [note, ...friends[idx].notes],
+      };
+      await this.saveAll(friends);
+    }
+  }
+
+  async addSignificantDate(friendId: string, date: SignificantDate): Promise<void> {
+    const friends = await this.getAll();
+    const idx = friends.findIndex(f => f.id === friendId);
+    if (idx >= 0) {
+      friends[idx] = {
+        ...friends[idx],
+        significantDates: [...(friends[idx].significantDates ?? []), date],
+      };
+      await this.saveAll(friends);
+    }
+  }
+
+  async updateSignificantDate(friendId: string, dateId: string, updates: Partial<Omit<SignificantDate, 'id'>>): Promise<void> {
+    const friends = await this.getAll();
+    const idx = friends.findIndex(f => f.id === friendId);
+    if (idx >= 0) {
+      friends[idx] = {
+        ...friends[idx],
+        significantDates: (friends[idx].significantDates ?? []).map(d =>
+          d.id === dateId ? { ...d, ...updates } : d
+        ),
+      };
+      await this.saveAll(friends);
+    }
+  }
+
+  async deleteSignificantDate(friendId: string, dateId: string): Promise<void> {
+    const friends = await this.getAll();
+    const idx = friends.findIndex(f => f.id === friendId);
+    if (idx >= 0) {
+      friends[idx] = {
+        ...friends[idx],
+        significantDates: (friends[idx].significantDates ?? []).filter(d => d.id !== dateId),
       };
       await this.saveAll(friends);
     }

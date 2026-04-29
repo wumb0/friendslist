@@ -16,6 +16,7 @@ export async function migrateGroups(): Promise<void> {
       notificationFrequency: rawSettings.notificationFrequency ?? 'daily',
       notificationHour: rawSettings.notificationHour ?? 9,
       notificationMinute: rawSettings.notificationMinute ?? 0,
+      significantDatesEnabled: true,
     };
 
     await AsyncStorage.setItem('groups_v1', JSON.stringify([defaultGroup]));

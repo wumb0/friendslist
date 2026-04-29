@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { Friend, FriendNote } from '../types/Friend';
+import { Friend, FriendNote, SignificantDate } from '../types/Friend';
 import { FriendRepository } from '../repository/FriendRepository';
 import { AsyncStorageFriendRepository } from '../repository/AsyncStorageFriendRepository';
 import { sortFriends } from '../utils/sortFriends';
@@ -22,10 +22,18 @@ export function useFriends() {
     reload().finally(() => setLoading(false));
   }, [reload]);
 
-  const addFriends = async (names: string[], groupId: string): Promise<void> => {
+  const addFriends = async (
+    imports: Array<{ name: string; birthday?: { month: number; day: number; year?: number } }>,
+    groupId: string,
+    notifyHour = 9,
+    notifyMinute = 0,
+  ): Promise<void> => {
     if (!groupId) return;
-    for (const name of names) {
-      await repo.save({ id: generateId(), name: name.trim(), groupId, lastCheckedIn: null, createdAt: Date.now(), notes: [], checkIns: [] });
+    for (const { name, birthday } of imports) {
+      const significantDates: SignificantDate[] = birthday
+        ? [{ id: generateId(), label: 'Birthday', month: birthday.month, day: birthday.day, year: birthday.year, notifyEnabled: true, notifyHour, notifyMinute }]
+        : [];
+      await repo.save({ id: generateId(), name: name.trim(), groupId, lastCheckedIn: null, createdAt: Date.now(), notes: [], checkIns: [], significantDates });
     }
     await reload();
   };
@@ -89,5 +97,20 @@ export function useFriends() {
     await reload();
   };
 
-  return { friends, loading, addFriends, checkIn, addNote, updateNote, deleteNote, deleteFriend, convertCheckInToNote, moveToGroup, moveGroupMembers, renameFriend };
+  const addSignificantDate = async (friendId: string, data: Omit<SignificantDate, 'id'>): Promise<void> => {
+    await repo.addSignificantDate(friendId, { ...data, id: generateId() });
+    await reload();
+  };
+
+  const updateSignificantDate = async (friendId: string, dateId: string, updates: Partial<Omit<SignificantDate, 'id'>>): Promise<void> => {
+    await repo.updateSignificantDate(friendId, dateId, updates);
+    await reload();
+  };
+
+  const deleteSignificantDate = async (friendId: string, dateId: string): Promise<void> => {
+    await repo.deleteSignificantDate(friendId, dateId);
+    await reload();
+  };
+
+  return { friends, loading, addFriends, checkIn, addNote, updateNote, deleteNote, deleteFriend, convertCheckInToNote, moveToGroup, moveGroupMembers, renameFriend, addSignificantDate, updateSignificantDate, deleteSignificantDate };
 }

@@ -8,4 +8,5 @@ export interface Group {
   notificationMinute: number;
   notificationWeekday?: number; // 1=Sun … 7=Sat (expo-notifications WEEKLY convention)
   notificationDay?: number;     // 1-28 for monthly
+  significantDatesEnabled: boolean;
 }

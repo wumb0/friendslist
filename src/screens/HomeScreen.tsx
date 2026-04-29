@@ -28,7 +28,7 @@ function getNoteSnippet(friend: Friend, query: string): string | undefined {
 
 export function HomeScreen() {
   const { theme } = useTheme();
-  const { friends, loading, addFriends, checkIn, addNote, updateNote, deleteNote, deleteFriend, convertCheckInToNote, moveToGroup, moveGroupMembers, renameFriend } = useFriends();
+  const { friends, loading, addFriends, checkIn, addNote, updateNote, deleteNote, deleteFriend, convertCheckInToNote, moveToGroup, moveGroupMembers, renameFriend, addSignificantDate, updateSignificantDate, deleteSignificantDate } = useFriends();
   const { groups, loading: groupsLoading, addGroup, updateGroup, deleteGroup } = useGroups(friends);
 
   const [activeGroupId, setActiveGroupId] = useState<string>('');
@@ -262,7 +262,10 @@ export function HomeScreen() {
       <AddFriendModal
         visible={showAdd}
         onClose={() => setShowAdd(false)}
-        onAdd={addFriends}
+        onAdd={(imports, groupId) => {
+          const g = groups.find(gr => gr.id === groupId);
+          addFriends(imports, groupId, g?.notificationHour, g?.notificationMinute);
+        }}
         existingNames={existingNames}
         groups={groups}
         defaultGroupId={activeGroupId}
@@ -277,6 +280,9 @@ export function HomeScreen() {
         onConvertCheckIn={convertCheckInToNote}
         groups={groups}
         onMoveGroup={moveToGroup}
+        onAddSignificantDate={addSignificantDate}
+        onUpdateSignificantDate={updateSignificantDate}
+        onDeleteSignificantDate={deleteSignificantDate}
       />
 
       <QuickNoteModal

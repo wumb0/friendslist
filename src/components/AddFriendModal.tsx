@@ -20,7 +20,7 @@ import { Group } from '../types/Group';
 interface Props {
   visible: boolean;
   onClose: () => void;
-  onAdd: (names: string[], groupId: string) => void;
+  onAdd: (imports: Array<{ name: string; birthday?: { month: number; day: number; year?: number } }>, groupId: string) => void;
   existingNames: Set<string>;
   groups: Group[];
   defaultGroupId: string;
@@ -57,7 +57,7 @@ export function AddFriendModal({ visible, onClose, onAdd, existingNames, groups,
     setContactsPermission(status === 'granted' ? 'granted' : 'denied');
     if (status === 'granted') {
       const { data } = await Contacts.getContactsAsync({
-        fields: [Contacts.Fields.Name],
+        fields: [Contacts.Fields.Name, Contacts.Fields.Birthday],
         sort: Contacts.SortTypes.FirstName,
       });
       setContacts(data.filter(c => c.name && c.name.trim().length > 0));
@@ -75,7 +75,7 @@ export function AddFriendModal({ visible, onClose, onAdd, existingNames, groups,
   const handleManualAdd = () => {
     const trimmed = name.trim();
     if (!trimmed) return;
-    onAdd([trimmed], selectedGroupId);
+    onAdd([{ name: trimmed }], selectedGroupId);
     onClose();
   };
 
@@ -90,7 +90,15 @@ export function AddFriendModal({ visible, onClose, onAdd, existingNames, groups,
 
   const handleAddSelected = () => {
     if (selected.size === 0) return;
-    onAdd(Array.from(selected), selectedGroupId);
+    const imports = Array.from(selected).map(contactName => {
+      const contact = contacts.find(c => c.name === contactName);
+      const bday = contact?.birthday as (Contacts.Date | undefined);
+      const birthday = bday
+        ? { month: bday.month + 1, day: bday.day, year: bday.year && bday.year > 1900 ? bday.year : undefined }
+        : undefined;
+      return { name: contactName, birthday };
+    });
+    onAdd(imports, selectedGroupId);
     onClose();
   };
 

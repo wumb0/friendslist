@@ -1,4 +1,4 @@
-import { Friend, FriendNote } from '../types/Friend';
+import { Friend, FriendNote, SignificantDate } from '../types/Friend';
 
 export interface FriendRepository {
   getAll(): Promise<Friend[]>;
@@ -9,4 +9,7 @@ export interface FriendRepository {
   updateNote(friendId: string, noteId: string, updates: Partial<Pick<FriendNote, 'content' | 'pinned'>>): Promise<void>;
   deleteNote(friendId: string, noteId: string): Promise<void>;
   convertCheckInToNote(friendId: string, checkInTs: number, content: string): Promise<void>;
+  addSignificantDate(friendId: string, date: SignificantDate): Promise<void>;
+  updateSignificantDate(friendId: string, dateId: string, updates: Partial<Omit<SignificantDate, 'id'>>): Promise<void>;
+  deleteSignificantDate(friendId: string, dateId: string): Promise<void>;
 }

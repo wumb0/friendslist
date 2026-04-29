@@ -24,7 +24,7 @@ interface Props {
   onClose: () => void;
   groups: Group[];
   friends: Friend[];
-  onAddGroup: (name: string, freq: GroupFrequency, hour: number, minute: number, weekday: number, day: number) => Promise<Group>;
+  onAddGroup: (name: string, freq: GroupFrequency, hour: number, minute: number, weekday: number, day: number, significantDatesEnabled: boolean) => Promise<Group>;
   onUpdateGroup: (id: string, updates: Partial<Omit<Group, 'id'>>) => Promise<void>;
   onDeleteGroup: (id: string) => Promise<void>;
   onMoveGroupMembers: (fromGroupId: string, toGroupId: string) => Promise<void>;
@@ -82,6 +82,7 @@ type EditState = {
   notificationMinute: number;
   notificationWeekday: number;
   notificationDay: number;
+  significantDatesEnabled: boolean;
 };
 
 export function GroupsModal({ visible, onClose, groups, friends, onAddGroup, onUpdateGroup, onDeleteGroup, onMoveGroupMembers }: Props) {
@@ -93,7 +94,7 @@ export function GroupsModal({ visible, onClose, groups, friends, onAddGroup, onU
   const [showTimePicker, setShowTimePicker] = useState(false);
 
   const openNew = () => {
-    setEditing({ id: null, name: '', notificationFrequency: 'weekly', notificationHour: 9, notificationMinute: 0, notificationWeekday: 2, notificationDay: 1 });
+    setEditing({ id: null, name: '', notificationFrequency: 'weekly', notificationHour: 9, notificationMinute: 0, notificationWeekday: 2, notificationDay: 1, significantDatesEnabled: true });
     setShowTimePicker(false);
   };
 
@@ -106,6 +107,7 @@ export function GroupsModal({ visible, onClose, groups, friends, onAddGroup, onU
       notificationMinute: group.notificationMinute,
       notificationWeekday: group.notificationWeekday ?? 2,
       notificationDay: group.notificationDay ?? 1,
+      significantDatesEnabled: group.significantDatesEnabled,
     });
     setShowTimePicker(false);
   };
@@ -124,9 +126,10 @@ export function GroupsModal({ visible, onClose, groups, friends, onAddGroup, onU
         notificationMinute: editing.notificationMinute,
         notificationWeekday: editing.notificationWeekday,
         notificationDay: editing.notificationDay,
+        significantDatesEnabled: editing.significantDatesEnabled,
       });
     } else {
-      await onAddGroup(name, editing.notificationFrequency, editing.notificationHour, editing.notificationMinute, editing.notificationWeekday, editing.notificationDay);
+      await onAddGroup(name, editing.notificationFrequency, editing.notificationHour, editing.notificationMinute, editing.notificationWeekday, editing.notificationDay, editing.significantDatesEnabled);
     }
     setEditing(null);
   };
@@ -212,7 +215,7 @@ export function GroupsModal({ visible, onClose, groups, friends, onAddGroup, onU
         )}
 
         {editing ? (
-          <ScrollView keyboardShouldPersistTaps="handled">
+          <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={{ paddingBottom: 40 }}>
             {/* Name */}
             <Text style={[styles.sectionHeader, { color: theme.textSecondary }]}>Name</Text>
             <View style={[styles.card, { backgroundColor: theme.card }]}>
@@ -320,12 +323,29 @@ export function GroupsModal({ visible, onClose, groups, friends, onAddGroup, onU
                       display="spinner"
                       onChange={handleTimeChange}
                       textColor={theme.textPrimary}
+                      themeVariant={theme.isDark ? 'dark' : 'light'}
                       style={styles.iosPicker}
                     />
                   )}
                 </View>
               </>
             )}
+
+            {/* Significant dates */}
+            <Text style={[styles.sectionHeader, { color: theme.textSecondary }]}>Significant Dates</Text>
+            <View style={[styles.card, { backgroundColor: theme.card }]}>
+              <TouchableOpacity
+                style={styles.row}
+                onPress={() => setEditing(e => e ? { ...e, significantDatesEnabled: !e.significantDatesEnabled } : e)}
+              >
+                <Text style={[styles.rowLabel, { color: theme.textPrimary }]}>Birthday & anniversary reminders</Text>
+                <Ionicons
+                  name={editing.significantDatesEnabled ? 'checkbox' : 'square-outline'}
+                  size={20}
+                  color={editing.significantDatesEnabled ? theme.accent : theme.textSecondary}
+                />
+              </TouchableOpacity>
+            </View>
 
             {/* Delete */}
             {editing.id && (
@@ -340,7 +360,7 @@ export function GroupsModal({ visible, onClose, groups, friends, onAddGroup, onU
             )}
 
             {showTimePicker && Platform.OS === 'android' && (
-              <DateTimePicker value={pickerDate} mode="time" display="default" onChange={handleTimeChange} />
+              <DateTimePicker value={pickerDate} mode="time" display="default" onChange={handleTimeChange} textColor={theme.textPrimary} themeVariant={theme.isDark ? 'dark' : 'light'} />
             )}
           </ScrollView>
         ) : (

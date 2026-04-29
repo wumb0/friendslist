@@ -4,6 +4,7 @@ import {
   View,
   Text,
   FlatList,
+  ScrollView,
   TextInput,
   TouchableOpacity,
   TouchableWithoutFeedback,
@@ -11,10 +12,14 @@ import {
   Platform,
   StatusBar,
   Alert,
+  ActivityIndicator,
+  ActionSheetIOS,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Friend, FriendNote } from '../types/Friend';
+import DateTimePicker, { DateTimePickerEvent } from '@react-native-community/datetimepicker';
+import * as Contacts from 'expo-contacts';
+import { Friend, FriendNote, SignificantDate } from '../types/Friend';
 import { Group } from '../types/Group';
 import { useTheme } from '../context/ThemeContext';
 
@@ -27,7 +32,12 @@ interface Props {
   onConvertCheckIn: (friendId: string, checkInTs: number, content: string) => void;
   groups: Group[];
   onMoveGroup: (friendId: string, groupId: string) => void;
+  onAddSignificantDate: (friendId: string, data: Omit<SignificantDate, 'id'>) => void;
+  onUpdateSignificantDate: (friendId: string, dateId: string, updates: Partial<Omit<SignificantDate, 'id'>>) => void;
+  onDeleteSignificantDate: (friendId: string, dateId: string) => void;
 }
+
+type Tab = 'history' | 'dates';
 
 type TimelineItem =
   | { kind: 'note'; note: FriendNote; ts: number }
@@ -51,6 +61,292 @@ function formatDate(ts: number): string {
     weekday: 'short', month: 'short', day: 'numeric', year: 'numeric',
   });
 }
+
+const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June',
+  'July', 'August', 'September', 'October', 'November', 'December'];
+
+function formatSignificantDate(date: SignificantDate): string {
+  const month = MONTHS[date.month - 1];
+  if (date.year) return `${month} ${date.day}, ${date.year}`;
+  return `${month} ${date.day}`;
+}
+
+function formatTime(hour: number, minute: number): string {
+  const ampm = hour >= 12 ? 'PM' : 'AM';
+  const h = hour % 12 || 12;
+  const m = minute.toString().padStart(2, '0');
+  return `${h}:${m} ${ampm}`;
+}
+
+const PRESET_LABELS = ['Birthday', 'Anniversary'];
+
+// ── Date form (add/edit) ──────────────────────────────────────────────────────
+
+interface DateFormState {
+  id: string | null;
+  label: string;
+  pickerDate: Date;
+  includeYear: boolean;
+  notifyEnabled: boolean;
+  notifyHour: number;
+  notifyMinute: number;
+}
+
+function makeDatePickerDate(month: number, day: number, year?: number): Date {
+  return new Date(year ?? 2000, month - 1, day);
+}
+
+function DateForm({
+  initial,
+  onSave,
+  onCancel,
+  theme,
+}: {
+  initial: DateFormState;
+  onSave: (state: DateFormState) => void;
+  onCancel: () => void;
+  theme: ReturnType<typeof useTheme>['theme'];
+}) {
+  const [label, setLabel] = useState(initial.label);
+  const [labelFocused, setLabelFocused] = useState(false);
+  const [pickerDate, setPickerDate] = useState(initial.pickerDate);
+  const [includeYear, setIncludeYear] = useState(initial.includeYear);
+  const [notifyEnabled, setNotifyEnabled] = useState(initial.notifyEnabled);
+  const [notifyHour, setNotifyHour] = useState(initial.notifyHour);
+  const [notifyMinute, setNotifyMinute] = useState(initial.notifyMinute);
+  const [showDatePicker, setShowDatePicker] = useState(false);
+  const [showTimePicker, setShowTimePicker] = useState(false);
+
+  const suggestions = PRESET_LABELS.filter(
+    p => p.toLowerCase().startsWith(label.toLowerCase()) && p.toLowerCase() !== label.toLowerCase()
+  );
+  const showSuggestions = labelFocused && suggestions.length > 0;
+
+  const handleDateChange = (_event: DateTimePickerEvent, date?: Date) => {
+    if (Platform.OS === 'android') setShowDatePicker(false);
+    if (date) setPickerDate(date);
+  };
+
+  const handleTimeChange = (_event: DateTimePickerEvent, date?: Date) => {
+    if (Platform.OS === 'android') setShowTimePicker(false);
+    if (date) { setNotifyHour(date.getHours()); setNotifyMinute(date.getMinutes()); }
+  };
+
+  const timePicker = new Date();
+  timePicker.setHours(notifyHour, notifyMinute, 0, 0);
+
+  const canSave = label.trim().length > 0;
+
+  return (
+    <ScrollView contentContainerStyle={dateFormStyles.container} keyboardShouldPersistTaps="handled">
+      <Text style={[dateFormStyles.sectionLabel, { color: theme.textSecondary }]}>LABEL</Text>
+      <TextInput
+        style={[dateFormStyles.labelInput, { color: theme.textPrimary, borderColor: theme.border, backgroundColor: theme.input }]}
+        value={label}
+        onChangeText={setLabel}
+        onFocus={() => setLabelFocused(true)}
+        onBlur={() => setLabelFocused(false)}
+        placeholder="e.g. Birthday, Anniversary…"
+        placeholderTextColor={theme.placeholder}
+        maxLength={40}
+      />
+      {showSuggestions && (
+        <View style={dateFormStyles.suggestionPills}>
+          {suggestions.map(s => (
+            <TouchableOpacity
+              key={s}
+              onPress={() => { setLabel(s); setLabelFocused(false); }}
+              style={[dateFormStyles.suggestionPill, { backgroundColor: theme.badge, borderColor: theme.border }]}
+            >
+              <Text style={[dateFormStyles.suggestionPillText, { color: theme.textSecondary }]}>{s}</Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+      )}
+
+      <Text style={[dateFormStyles.sectionLabel, { color: theme.textSecondary }]}>DATE</Text>
+      <TouchableOpacity
+        style={[dateFormStyles.row, { backgroundColor: theme.card, borderColor: theme.border }]}
+        onPress={() => setShowDatePicker(v => !v)}
+      >
+        <Text style={[dateFormStyles.rowLabel, { color: theme.textPrimary }]}>Date</Text>
+        <Text style={[dateFormStyles.rowValue, { color: theme.accent }]}>
+          {pickerDate.toLocaleDateString('en-US', { month: 'long', day: 'numeric', ...(includeYear ? { year: 'numeric' } : {}) })}
+        </Text>
+      </TouchableOpacity>
+      {showDatePicker && (
+        <DateTimePicker
+          value={pickerDate}
+          mode="date"
+          display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+          onChange={handleDateChange}
+          textColor={theme.textPrimary}
+          themeVariant={theme.isDark ? 'dark' : 'light'}
+        />
+      )}
+
+      <TouchableOpacity
+        style={[dateFormStyles.row, { backgroundColor: theme.card, borderColor: theme.border, marginTop: 8 }]}
+        onPress={() => setIncludeYear(v => !v)}
+      >
+        <Text style={[dateFormStyles.rowLabel, { color: theme.textPrimary }]}>Include year</Text>
+        <Ionicons name={includeYear ? 'checkbox' : 'square-outline'} size={20} color={includeYear ? theme.accent : theme.textSecondary} />
+      </TouchableOpacity>
+
+      <Text style={[dateFormStyles.sectionLabel, { color: theme.textSecondary }]}>NOTIFICATION</Text>
+      <TouchableOpacity
+        style={[dateFormStyles.row, { backgroundColor: theme.card, borderColor: theme.border }]}
+        onPress={() => setNotifyEnabled(v => !v)}
+      >
+        <Text style={[dateFormStyles.rowLabel, { color: theme.textPrimary }]}>Notify me on this date</Text>
+        <Ionicons name={notifyEnabled ? 'checkbox' : 'square-outline'} size={20} color={notifyEnabled ? theme.accent : theme.textSecondary} />
+      </TouchableOpacity>
+      {notifyEnabled && (
+        <TouchableOpacity
+          style={[dateFormStyles.row, { backgroundColor: theme.card, borderColor: theme.border, marginTop: 8 }]}
+          onPress={() => setShowTimePicker(v => !v)}
+        >
+          <Text style={[dateFormStyles.rowLabel, { color: theme.textPrimary }]}>Notify at</Text>
+          <Text style={[dateFormStyles.rowValue, { color: theme.accent }]}>{formatTime(notifyHour, notifyMinute)}</Text>
+        </TouchableOpacity>
+      )}
+      {notifyEnabled && showTimePicker && (
+        <DateTimePicker
+          value={timePicker}
+          mode="time"
+          display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+          onChange={handleTimeChange}
+          textColor={theme.textPrimary}
+          themeVariant={theme.isDark ? 'dark' : 'light'}
+        />
+      )}
+
+      <View style={dateFormStyles.buttons}>
+        <TouchableOpacity onPress={onCancel} style={[dateFormStyles.btn, { borderColor: theme.border }]}>
+          <Text style={[dateFormStyles.btnCancelText, { color: theme.textSecondary }]}>Cancel</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          onPress={() => {
+            if (!canSave) return;
+            onSave({ id: initial.id, label: label.trim(), pickerDate, includeYear, notifyEnabled, notifyHour, notifyMinute });
+          }}
+          style={[dateFormStyles.btn, { backgroundColor: canSave ? theme.accent : theme.border }]}
+          disabled={!canSave}
+        >
+          <Text style={dateFormStyles.btnSaveText}>Save</Text>
+        </TouchableOpacity>
+      </View>
+    </ScrollView>
+  );
+}
+
+const dateFormStyles = StyleSheet.create({
+  container: { padding: 16, gap: 0 },
+  sectionLabel: {
+    fontSize: 12,
+    fontWeight: '600',
+    letterSpacing: 0.5,
+    textTransform: 'uppercase',
+    marginTop: 20,
+    marginBottom: 8,
+    paddingHorizontal: 4,
+  },
+  labelInput: {
+    borderWidth: 1,
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    fontSize: 15,
+  },
+  suggestionPills: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 6 },
+  suggestionPill: { paddingHorizontal: 11, paddingVertical: 6, borderRadius: 14, borderWidth: 1 },
+  suggestionPillText: { fontSize: 13, fontWeight: '500' },
+  row: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 14,
+    paddingVertical: 14,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderRadius: 10,
+  },
+  rowLabel: { fontSize: 15 },
+  rowValue: { fontSize: 15, fontWeight: '500' },
+  buttons: { flexDirection: 'row', gap: 10, marginTop: 24 },
+  btn: {
+    flex: 1,
+    paddingVertical: 13,
+    borderRadius: 10,
+    borderWidth: 1,
+    alignItems: 'center',
+  },
+  btnCancelText: { fontSize: 15, fontWeight: '500' },
+  btnSaveText: { fontSize: 15, fontWeight: '600', color: '#fff' },
+});
+
+// ── Date card ─────────────────────────────────────────────────────────────────
+
+function DateCard({
+  date,
+  onEdit,
+  onDelete,
+  theme,
+}: {
+  date: SignificantDate;
+  onEdit: () => void;
+  onDelete: () => void;
+  theme: ReturnType<typeof useTheme>['theme'];
+}) {
+  const handleLongPress = () => {
+    if (Platform.OS === 'ios') {
+      ActionSheetIOS.showActionSheetWithOptions(
+        { options: ['Edit', 'Delete', 'Cancel'], destructiveButtonIndex: 1, cancelButtonIndex: 2 },
+        i => { if (i === 0) onEdit(); else if (i === 1) onDelete(); },
+      );
+    } else {
+      Alert.alert(date.label, undefined, [
+        { text: 'Edit', onPress: onEdit },
+        { text: 'Delete', style: 'destructive', onPress: onDelete },
+        { text: 'Cancel', style: 'cancel' },
+      ]);
+    }
+  };
+
+  return (
+    <TouchableOpacity
+      onPress={onEdit}
+      onLongPress={handleLongPress}
+      delayLongPress={400}
+      style={[dateCardStyles.card, { backgroundColor: theme.card, borderColor: theme.border }]}
+      activeOpacity={0.7}
+    >
+      <View style={dateCardStyles.left}>
+        <Text style={[dateCardStyles.label, { color: theme.textPrimary }]}>{date.label}</Text>
+        <Text style={[dateCardStyles.dateText, { color: theme.textSecondary }]}>{formatSignificantDate(date)}</Text>
+      </View>
+      {date.notifyEnabled && (
+        <Ionicons name="notifications" size={16} color={theme.accent} />
+      )}
+    </TouchableOpacity>
+  );
+}
+
+const dateCardStyles = StyleSheet.create({
+  card: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    borderRadius: 12,
+    padding: 14,
+    borderWidth: 1,
+    marginBottom: 10,
+  },
+  left: { gap: 2 },
+  label: { fontSize: 15, fontWeight: '600' },
+  dateText: { fontSize: 13 },
+});
+
+// ── Note card ─────────────────────────────────────────────────────────────────
 
 function NoteCard({ item, friendId, onUpdate, onDelete, theme }: {
   item: Extract<TimelineItem, { kind: 'note' }>;
@@ -179,29 +475,152 @@ function CheckInRow({ ts, theme, onConvertToNote }: {
   );
 }
 
-export function NotesModal({ friend, visible, onClose, onUpdateNote, onDeleteNote, onConvertCheckIn, groups, onMoveGroup }: Props) {
+// ── Main modal ────────────────────────────────────────────────────────────────
+
+export function NotesModal({
+  friend, visible, onClose, onUpdateNote, onDeleteNote, onConvertCheckIn,
+  groups, onMoveGroup, onAddSignificantDate, onUpdateSignificantDate, onDeleteSignificantDate,
+}: Props) {
   const { theme } = useTheme();
   const insets = useSafeAreaInsets();
   const topPadding = Platform.OS === 'ios' ? insets.top + 14 : (StatusBar.currentHeight ?? 0) + 14;
   const [groupPickerVisible, setGroupPickerVisible] = useState(false);
+  const [activeTab, setActiveTab] = useState<Tab>('history');
+  const [editingDate, setEditingDate] = useState<DateFormState | null>(null);
+  const [importingBirthday, setImportingBirthday] = useState(false);
 
   if (!friend) return null;
 
   const timeline = buildTimeline(friend);
   const currentGroup = groups.find(g => g.id === friend.groupId);
+  const significantDates = friend.significantDates ?? [];
+
+  const handleOpenNewDate = () => {
+    setEditingDate({
+      id: null,
+      label: 'Birthday',
+      pickerDate: new Date(2000, 0, 1),
+      includeYear: false,
+      notifyEnabled: true,
+      notifyHour: currentGroup?.notificationHour ?? 9,
+      notifyMinute: currentGroup?.notificationMinute ?? 0,
+    });
+  };
+
+  const handleOpenEditDate = (date: SignificantDate) => {
+    setEditingDate({
+      id: date.id,
+      label: date.label,
+      pickerDate: makeDatePickerDate(date.month, date.day, date.year),
+      includeYear: !!date.year,
+      notifyEnabled: date.notifyEnabled,
+      notifyHour: date.notifyHour,
+      notifyMinute: date.notifyMinute,
+    });
+  };
+
+  const handleSaveDate = (state: DateFormState) => {
+    const data: Omit<SignificantDate, 'id'> = {
+      label: state.label,
+      month: state.pickerDate.getMonth() + 1,
+      day: state.pickerDate.getDate(),
+      year: state.includeYear ? state.pickerDate.getFullYear() : undefined,
+      notifyEnabled: state.notifyEnabled,
+      notifyHour: state.notifyHour,
+      notifyMinute: state.notifyMinute,
+    };
+    if (state.id) {
+      onUpdateSignificantDate(friend.id, state.id, data);
+    } else {
+      onAddSignificantDate(friend.id, data);
+    }
+    setEditingDate(null);
+  };
+
+  const handleDeleteDate = (dateId: string) => {
+    Alert.alert('Delete Date', 'Remove this significant date?', [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Delete', style: 'destructive', onPress: () => onDeleteSignificantDate(friend.id, dateId) },
+    ]);
+  };
+
+  const handleImportBirthday = async () => {
+    setImportingBirthday(true);
+    try {
+      const { status } = await Contacts.requestPermissionsAsync();
+      if (status !== 'granted') {
+        Alert.alert('Permission Required', 'Contacts access is needed to import birthdays.');
+        return;
+      }
+      const { data } = await Contacts.getContactsAsync({
+        fields: [Contacts.Fields.Name, Contacts.Fields.Birthday],
+        name: friend.name,
+      });
+      const match = data.find(c => c.birthday);
+      if (!match || !match.birthday) {
+        Alert.alert('Not Found', `No birthday found in contacts for "${friend.name}".`);
+        return;
+      }
+      // expo-contacts Date: month is 0-based (like JS Date), year may be absent or fake
+      const bday = match.birthday as Contacts.Date;
+      const month = bday.month + 1;
+      const day = bday.day;
+      const year = bday.year && bday.year > 1900 ? bday.year : undefined;
+      const dateStr = year
+        ? `${MONTHS[month - 1]} ${day}, ${year}`
+        : `${MONTHS[month - 1]} ${day}`;
+      Alert.alert(
+        'Import Birthday',
+        `Add ${friend.name}'s birthday: ${dateStr}?`,
+        [
+          { text: 'Cancel', style: 'cancel' },
+          {
+            text: 'Add',
+            onPress: () => {
+              onAddSignificantDate(friend.id, {
+                label: 'Birthday',
+                month,
+                day,
+                year,
+                notifyEnabled: true,
+                notifyHour: currentGroup?.notificationHour ?? 9,
+                notifyMinute: currentGroup?.notificationMinute ?? 0,
+              });
+            },
+          },
+        ],
+      );
+    } finally {
+      setImportingBirthday(false);
+    }
+  };
+
+  const handleClose = () => {
+    setEditingDate(null);
+    setActiveTab('history');
+    onClose();
+  };
 
   return (
-    <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
+    <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={() => editingDate ? setEditingDate(null) : handleClose()}>
       <View style={[styles.container, { backgroundColor: theme.background }]}>
+        {/* Header */}
         <View style={[styles.header, { backgroundColor: theme.header, borderBottomColor: theme.border, paddingTop: topPadding }]}>
           <View style={{ width: 60 }} />
-          <Text style={[styles.title, { color: theme.textPrimary }]}>{friend.name}</Text>
-          <TouchableOpacity onPress={onClose} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-            <Text style={[styles.doneButton, { color: theme.accent }]}>Done</Text>
-          </TouchableOpacity>
+          <Text style={[styles.title, { color: theme.textPrimary }]}>
+            {editingDate ? (editingDate.id ? 'Edit Date' : 'Add Date') : friend.name}
+          </Text>
+          {editingDate ? (
+            <View style={{ width: 60 }} />
+          ) : (
+            <TouchableOpacity onPress={handleClose} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+              <Text style={[styles.doneButton, { color: theme.accent }]}>Done</Text>
+            </TouchableOpacity>
+          )}
         </View>
 
-        {currentGroup && (
+        {/* Group row (only on main view) */}
+        {!editingDate && currentGroup && (
           <TouchableOpacity
             style={[styles.groupRow, { borderBottomColor: theme.border }]}
             onPress={() => { if (groups.length > 1) setGroupPickerVisible(true); }}
@@ -215,6 +634,107 @@ export function NotesModal({ friend, visible, onClose, onUpdateNote, onDeleteNot
           </TouchableOpacity>
         )}
 
+        {/* Tab switcher (only on main view) */}
+        {!editingDate && (
+          <View style={[styles.tabBar, { borderBottomColor: theme.border }]}>
+            {(['history', 'dates'] as Tab[]).map(t => (
+              <TouchableOpacity
+                key={t}
+                style={[styles.tab, activeTab === t && [styles.tabActive, { borderBottomColor: theme.accent }]]}
+                onPress={() => setActiveTab(t)}
+              >
+                <Text style={[styles.tabText, { color: activeTab === t ? theme.accent : theme.textSecondary }]}>
+                  {t === 'history' ? 'History' : 'Dates'}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+        )}
+
+        {/* Date form */}
+        {editingDate ? (
+          <DateForm
+            initial={editingDate}
+            onSave={handleSaveDate}
+            onCancel={() => setEditingDate(null)}
+            theme={theme}
+          />
+        ) : activeTab === 'history' ? (
+          /* History tab */
+          timeline.length === 0 ? (
+            <View style={styles.empty}>
+              <Text style={[styles.emptyTitle, { color: theme.textPrimary }]}>No history yet</Text>
+              <Text style={[styles.emptySubtitle, { color: theme.textSecondary }]}>
+                Check ins and notes will appear here.
+              </Text>
+            </View>
+          ) : (
+            <FlatList
+              data={timeline}
+              keyExtractor={item => item.kind === 'note' ? `note-${item.note.id}` : `checkin-${item.ts}`}
+              renderItem={({ item }) =>
+                item.kind === 'note' ? (
+                  <NoteCard
+                    item={item}
+                    friendId={friend.id}
+                    onUpdate={(noteId, updates) => onUpdateNote(friend.id, noteId, updates)}
+                    onDelete={onDeleteNote}
+                    theme={theme}
+                  />
+                ) : (
+                  <CheckInRow ts={item.ts} theme={theme} onConvertToNote={(ts, content) => onConvertCheckIn(friend.id, ts, content)} />
+                )
+              }
+              contentContainerStyle={styles.list}
+              showsVerticalScrollIndicator={false}
+              keyboardShouldPersistTaps="handled"
+            />
+          )
+        ) : (
+          /* Dates tab */
+          <ScrollView contentContainerStyle={styles.list} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
+            {significantDates.length === 0 && (
+              <View style={styles.datesEmpty}>
+                <Text style={[styles.emptyTitle, { color: theme.textPrimary }]}>No dates yet</Text>
+                <Text style={[styles.emptySubtitle, { color: theme.textSecondary }]}>
+                  Add birthdays and anniversaries to get yearly reminders.
+                </Text>
+              </View>
+            )}
+            {significantDates.map(date => (
+              <DateCard
+                key={date.id}
+                date={date}
+                onEdit={() => handleOpenEditDate(date)}
+                onDelete={() => handleDeleteDate(date.id)}
+                theme={theme}
+              />
+            ))}
+            <TouchableOpacity
+              style={[styles.actionButton, { backgroundColor: theme.accent }]}
+              onPress={handleOpenNewDate}
+            >
+              <Ionicons name="add" size={18} color="#fff" />
+              <Text style={styles.actionButtonText}>Add Date</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.actionButton, { backgroundColor: theme.card, borderColor: theme.border, borderWidth: 1, marginTop: 10 }]}
+              onPress={handleImportBirthday}
+              disabled={importingBirthday}
+            >
+              {importingBirthday ? (
+                <ActivityIndicator size="small" color={theme.accent} />
+              ) : (
+                <>
+                  <Ionicons name="person-circle-outline" size={18} color={theme.accent} />
+                  <Text style={[styles.actionButtonText, { color: theme.accent }]}>Import Birthday from Contacts</Text>
+                </>
+              )}
+            </TouchableOpacity>
+          </ScrollView>
+        )}
+
+        {/* Group picker */}
         <Modal visible={groupPickerVisible} transparent animationType="fade" onRequestClose={() => setGroupPickerVisible(false)}>
           <TouchableWithoutFeedback onPress={() => setGroupPickerVisible(false)}>
             <View style={styles.pickerOverlay}>
@@ -247,36 +767,6 @@ export function NotesModal({ friend, visible, onClose, onUpdateNote, onDeleteNot
             </View>
           </TouchableWithoutFeedback>
         </Modal>
-
-        {timeline.length === 0 ? (
-          <View style={styles.empty}>
-            <Text style={[styles.emptyTitle, { color: theme.textPrimary }]}>No history yet</Text>
-            <Text style={[styles.emptySubtitle, { color: theme.textSecondary }]}>
-              Check ins and notes will appear here.
-            </Text>
-          </View>
-        ) : (
-          <FlatList
-            data={timeline}
-            keyExtractor={item => item.kind === 'note' ? `note-${item.note.id}` : `checkin-${item.ts}`}
-            renderItem={({ item }) =>
-              item.kind === 'note' ? (
-                <NoteCard
-                  item={item}
-                  friendId={friend.id}
-                  onUpdate={(noteId, updates) => onUpdateNote(friend.id, noteId, updates)}
-                  onDelete={onDeleteNote}
-                  theme={theme}
-                />
-              ) : (
-                <CheckInRow ts={item.ts} theme={theme} onConvertToNote={(ts, content) => onConvertCheckIn(friend.id, ts, content)} />
-              )
-            }
-            contentContainerStyle={styles.list}
-            showsVerticalScrollIndicator={false}
-            keyboardShouldPersistTaps="handled"
-          />
-        )}
       </View>
     </Modal>
   );
@@ -295,6 +785,19 @@ const styles = StyleSheet.create({
   },
   title: { fontSize: 17, fontWeight: '600' },
   doneButton: { fontSize: 17, fontWeight: '600', width: 60, textAlign: 'right' },
+  tabBar: {
+    flexDirection: 'row',
+    borderBottomWidth: StyleSheet.hairlineWidth,
+  },
+  tab: {
+    flex: 1,
+    alignItems: 'center',
+    paddingVertical: 12,
+    borderBottomWidth: 2,
+    borderBottomColor: 'transparent',
+  },
+  tabActive: {},
+  tabText: { fontSize: 14, fontWeight: '600' },
   groupRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -307,6 +810,7 @@ const styles = StyleSheet.create({
   groupRight: { flexDirection: 'row', alignItems: 'center' },
   groupName: { fontSize: 14, fontWeight: '500' },
   list: { padding: 16, gap: 10 },
+  datesEmpty: { alignItems: 'center', paddingVertical: 32, paddingHorizontal: 20 },
   noteCard: {
     borderRadius: 14,
     padding: 16,
@@ -375,6 +879,15 @@ const styles = StyleSheet.create({
   },
   emptyTitle: { fontSize: 20, fontWeight: '600', marginBottom: 8 },
   emptySubtitle: { fontSize: 15, textAlign: 'center', lineHeight: 22 },
+  actionButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    paddingVertical: 13,
+    borderRadius: 12,
+  },
+  actionButtonText: { fontSize: 15, fontWeight: '600', color: '#fff' },
   pickerOverlay: {
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.4)',

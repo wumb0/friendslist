@@ -58,6 +58,27 @@ export async function scheduleGroupReminders(groups: Group[], friends: Friend[])
               },
       });
     }
+    for (const friend of friends) {
+      const group = groups.find(g => g.id === friend.groupId);
+      if (!(group?.significantDatesEnabled ?? true)) continue;
+      for (const date of (friend.significantDates ?? [])) {
+        if (!date.notifyEnabled) continue;
+        await Notifications.scheduleNotificationAsync({
+          content: {
+            title: `${friend.name}'s ${date.label}`,
+            body: "Don't forget to reach out today!",
+            data: { friendId: friend.id, groupId: friend.groupId },
+          },
+          trigger: {
+            type: Notifications.SchedulableTriggerInputTypes.YEARLY,
+            month: date.month,
+            day: date.day,
+            hour: date.notifyHour,
+            minute: date.notifyMinute,
+          },
+        });
+      }
+    }
   } catch {
     // not supported in this environment
   }

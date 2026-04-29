@@ -24,16 +24,27 @@ interface Props {
   onClose: () => void;
   groups: Group[];
   friends: Friend[];
-  onAddGroup: (name: string, freq: GroupFrequency, hour: number, minute: number) => Promise<Group>;
+  onAddGroup: (name: string, freq: GroupFrequency, hour: number, minute: number, weekday: number, day: number) => Promise<Group>;
   onUpdateGroup: (id: string, updates: Partial<Omit<Group, 'id'>>) => Promise<void>;
   onDeleteGroup: (id: string) => Promise<void>;
   onMoveGroupMembers: (fromGroupId: string, toGroupId: string) => Promise<void>;
 }
 
 const FREQUENCIES: { label: string; sublabel: string; value: GroupFrequency }[] = [
-  { label: 'Daily', sublabel: 'Every day', value: 'daily' },
-  { label: 'Weekly', sublabel: 'Every Monday', value: 'weekly' },
-  { label: 'Off', sublabel: 'No reminders', value: 'off' },
+  { label: 'Daily',   sublabel: 'Every day',     value: 'daily' },
+  { label: 'Weekly',  sublabel: 'Once a week',   value: 'weekly' },
+  { label: 'Monthly', sublabel: 'Once a month',  value: 'monthly' },
+  { label: 'Off',     sublabel: 'No reminders',  value: 'off' },
+];
+
+const WEEKDAYS = [
+  { label: 'Sun', value: 1 },
+  { label: 'Mon', value: 2 },
+  { label: 'Tue', value: 3 },
+  { label: 'Wed', value: 4 },
+  { label: 'Thu', value: 5 },
+  { label: 'Fri', value: 6 },
+  { label: 'Sat', value: 7 },
 ];
 
 function formatTime(hour: number, minute: number): string {
@@ -43,22 +54,38 @@ function formatTime(hour: number, minute: number): string {
   return `${h}:${m} ${period}`;
 }
 
-function frequencyLabel(freq: GroupFrequency): string {
-  if (freq === 'daily') return 'Daily';
-  if (freq === 'weekly') return 'Weekly';
-  return 'Off';
+function ordinal(n: number): string {
+  const s = ['th', 'st', 'nd', 'rd'];
+  const v = n % 100;
+  return n + (s[(v - 20) % 10] ?? s[v] ?? s[0]);
+}
+
+function scheduleDescription(group: Group): string {
+  if (group.notificationFrequency === 'off') return 'Off';
+  const time = formatTime(group.notificationHour, group.notificationMinute);
+  if (group.notificationFrequency === 'daily') return `Daily · ${time}`;
+  if (group.notificationFrequency === 'weekly') {
+    const day = WEEKDAYS.find(d => d.value === (group.notificationWeekday ?? 2))?.label ?? 'Mon';
+    return `Weekly · ${day} · ${time}`;
+  }
+  if (group.notificationFrequency === 'monthly') {
+    return `Monthly · ${ordinal(group.notificationDay ?? 1)} · ${time}`;
+  }
+  return '';
 }
 
 type EditState = {
-  id: string | null; // null = new group
+  id: string | null;
   name: string;
   notificationFrequency: GroupFrequency;
   notificationHour: number;
   notificationMinute: number;
+  notificationWeekday: number;
+  notificationDay: number;
 };
 
 export function GroupsModal({ visible, onClose, groups, friends, onAddGroup, onUpdateGroup, onDeleteGroup, onMoveGroupMembers }: Props) {
-  const { theme } = useTheme();
+  const { theme, settings } = useTheme();
   const insets = useSafeAreaInsets();
   const topPadding = Platform.OS === 'ios' ? insets.top + 14 : (StatusBar.currentHeight ?? 0) + 14;
 
@@ -66,7 +93,7 @@ export function GroupsModal({ visible, onClose, groups, friends, onAddGroup, onU
   const [showTimePicker, setShowTimePicker] = useState(false);
 
   const openNew = () => {
-    setEditing({ id: null, name: '', notificationFrequency: 'weekly', notificationHour: 9, notificationMinute: 0 });
+    setEditing({ id: null, name: '', notificationFrequency: 'weekly', notificationHour: 9, notificationMinute: 0, notificationWeekday: 2, notificationDay: 1 });
     setShowTimePicker(false);
   };
 
@@ -77,6 +104,8 @@ export function GroupsModal({ visible, onClose, groups, friends, onAddGroup, onU
       notificationFrequency: group.notificationFrequency,
       notificationHour: group.notificationHour,
       notificationMinute: group.notificationMinute,
+      notificationWeekday: group.notificationWeekday ?? 2,
+      notificationDay: group.notificationDay ?? 1,
     });
     setShowTimePicker(false);
   };
@@ -93,9 +122,11 @@ export function GroupsModal({ visible, onClose, groups, friends, onAddGroup, onU
         notificationFrequency: editing.notificationFrequency,
         notificationHour: editing.notificationHour,
         notificationMinute: editing.notificationMinute,
+        notificationWeekday: editing.notificationWeekday,
+        notificationDay: editing.notificationDay,
       });
     } else {
-      await onAddGroup(name, editing.notificationFrequency, editing.notificationHour, editing.notificationMinute);
+      await onAddGroup(name, editing.notificationFrequency, editing.notificationHour, editing.notificationMinute, editing.notificationWeekday, editing.notificationDay);
     }
     setEditing(null);
   };
@@ -148,7 +179,7 @@ export function GroupsModal({ visible, onClose, groups, friends, onAddGroup, onU
   const pickerDate = editing ? new Date(new Date().setHours(editing.notificationHour, editing.notificationMinute, 0, 0)) : new Date();
 
   return (
-    <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={handleClose}>
+    <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={editing ? handleBack : handleClose}>
       <View style={[styles.container, { backgroundColor: theme.background }]}>
         <View style={[styles.header, { backgroundColor: theme.header, borderBottomColor: theme.border, paddingTop: topPadding }]}>
           {editing ? (
@@ -172,6 +203,14 @@ export function GroupsModal({ visible, onClose, groups, friends, onAddGroup, onU
           )}
         </View>
 
+        {!settings.remindersEnabled && (
+          <View style={[styles.disabledBanner, { backgroundColor: theme.badge }]}>
+            <Text style={[styles.disabledBannerText, { color: theme.textSecondary }]}>
+              Reminders are globally disabled in Settings.
+            </Text>
+          </View>
+        )}
+
         {editing ? (
           <ScrollView keyboardShouldPersistTaps="handled">
             {/* Name */}
@@ -188,7 +227,7 @@ export function GroupsModal({ visible, onClose, groups, friends, onAddGroup, onU
               />
             </View>
 
-            {/* Reminders */}
+            {/* Frequency */}
             <Text style={[styles.sectionHeader, { color: theme.textSecondary }]}>Reminders</Text>
             <View style={[styles.card, { backgroundColor: theme.card }]}>
               {FREQUENCIES.map((f, i) => (
@@ -211,6 +250,57 @@ export function GroupsModal({ visible, onClose, groups, friends, onAddGroup, onU
                 </View>
               ))}
             </View>
+
+            {/* Day of week */}
+            {editing.notificationFrequency === 'weekly' && (
+              <>
+                <Text style={[styles.sectionHeader, { color: theme.textSecondary }]}>Day of Week</Text>
+                <View style={[styles.card, { backgroundColor: theme.card }]}>
+                  <View style={styles.weekdayRow}>
+                    {WEEKDAYS.map(d => {
+                      const active = editing.notificationWeekday === d.value;
+                      return (
+                        <TouchableOpacity
+                          key={d.value}
+                          style={[styles.weekdayBtn, { borderColor: theme.border, backgroundColor: active ? theme.accent : theme.background }]}
+                          onPress={() => setEditing(e => e ? { ...e, notificationWeekday: d.value } : e)}
+                        >
+                          <Text style={[styles.weekdayBtnText, { color: active ? '#fff' : theme.textPrimary }]}>
+                            {d.label}
+                          </Text>
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </View>
+                </View>
+              </>
+            )}
+
+            {/* Day of month */}
+            {editing.notificationFrequency === 'monthly' && (
+              <>
+                <Text style={[styles.sectionHeader, { color: theme.textSecondary }]}>Day of Month</Text>
+                <View style={[styles.card, { backgroundColor: theme.card }]}>
+                  <View style={styles.stepperRow}>
+                    <TouchableOpacity
+                      onPress={() => setEditing(e => e ? { ...e, notificationDay: Math.max(1, e.notificationDay - 1) } : e)}
+                      hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+                    >
+                      <Text style={[styles.stepperBtn, { color: theme.accent }]}>−</Text>
+                    </TouchableOpacity>
+                    <Text style={[styles.stepperValue, { color: theme.textPrimary }]}>
+                      {ordinal(editing.notificationDay)}
+                    </Text>
+                    <TouchableOpacity
+                      onPress={() => setEditing(e => e ? { ...e, notificationDay: Math.min(28, e.notificationDay + 1) } : e)}
+                      hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+                    >
+                      <Text style={[styles.stepperBtn, { color: theme.accent }]}>+</Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              </>
+            )}
 
             {/* Time */}
             {editing.notificationFrequency !== 'off' && (
@@ -265,8 +355,7 @@ export function GroupsModal({ visible, onClose, groups, friends, onAddGroup, onU
                       <View style={styles.groupInfo}>
                         <Text style={[styles.groupName, { color: theme.textPrimary }]}>{group.name}</Text>
                         <Text style={[styles.groupMeta, { color: theme.textSecondary }]}>
-                          {count} {count === 1 ? 'person' : 'people'} · {frequencyLabel(group.notificationFrequency)}
-                          {group.notificationFrequency !== 'off' ? ` · ${formatTime(group.notificationHour, group.notificationMinute)}` : ''}
+                          {count} {count === 1 ? 'person' : 'people'} · {scheduleDescription(group)}
                         </Text>
                       </View>
                       <Ionicons name="chevron-forward" size={18} color={theme.textSecondary} />
@@ -304,6 +393,8 @@ const styles = StyleSheet.create({
   },
   title: { fontSize: 17, fontWeight: '600' },
   headerAction: { fontSize: 17, fontWeight: '600', width: 60 },
+  disabledBanner: { paddingHorizontal: 20, paddingVertical: 10 },
+  disabledBannerText: { fontSize: 13, textAlign: 'center' },
   sectionHeader: {
     fontSize: 13,
     fontWeight: '600',
@@ -331,11 +422,7 @@ const styles = StyleSheet.create({
     paddingVertical: 14,
   },
   rowLabel: { fontSize: 16 },
-  nameInput: {
-    paddingHorizontal: 16,
-    paddingVertical: 14,
-    fontSize: 16,
-  },
+  nameInput: { paddingHorizontal: 16, paddingVertical: 14, fontSize: 16 },
   freqRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -347,6 +434,29 @@ const styles = StyleSheet.create({
   sublabel: { fontSize: 13, marginTop: 2 },
   selectedCheck: { fontSize: 18, fontWeight: '600' },
   separator: { height: StyleSheet.hairlineWidth, marginLeft: 16 },
+  weekdayRow: {
+    flexDirection: 'row',
+    paddingHorizontal: 12,
+    paddingVertical: 12,
+    gap: 6,
+  },
+  weekdayBtn: {
+    flex: 1,
+    paddingVertical: 8,
+    borderRadius: 8,
+    borderWidth: 1,
+    alignItems: 'center',
+  },
+  weekdayBtnText: { fontSize: 12, fontWeight: '600' },
+  stepperRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 14,
+    gap: 32,
+  },
+  stepperBtn: { fontSize: 24, fontWeight: '400', width: 32, textAlign: 'center' },
+  stepperValue: { fontSize: 17, fontWeight: '600', minWidth: 60, textAlign: 'center' },
   timeValue: { fontSize: 16, fontWeight: '500' },
   iosPicker: { marginBottom: 8 },
   groupRow: {

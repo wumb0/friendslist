@@ -1,5 +1,5 @@
 import React, { useRef } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, Alert } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, Alert, Platform, ActionSheetIOS } from 'react-native';
 import { Swipeable } from 'react-native-gesture-handler';
 import * as Haptics from 'expo-haptics';
 import { Friend } from '../types/Friend';
@@ -12,9 +12,12 @@ interface Props {
   onPress: (friend: Friend) => void;
   onDelete: (id: string) => void;
   onAddNote: (friend: Friend) => void;
+  groupName?: string;
+  noteSnippet?: string;
+  onEdit: (friend: Friend) => void;
 }
 
-export function FriendCard({ friend, onCheckIn, onPress, onDelete, onAddNote }: Props) {
+export function FriendCard({ friend, onCheckIn, onPress, onDelete, onAddNote, groupName, noteSnippet, onEdit }: Props) {
   const { theme } = useTheme();
   const swipeableRef = useRef<Swipeable>(null);
 
@@ -30,16 +33,27 @@ export function FriendCard({ friend, onCheckIn, onPress, onDelete, onAddNote }: 
     setTimeout(() => onAddNote(friend), 120);
   };
 
+  const confirmDelete = () => {
+    Alert.alert('Remove Friend', `Remove ${friend.name} from your list?`, [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Remove', style: 'destructive', onPress: () => onDelete(friend.id) },
+    ]);
+  };
+
   const handleLongPress = () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
-    Alert.alert(
-      'Remove Friend',
-      `Remove ${friend.name} from your list?`,
-      [
+    if (Platform.OS === 'ios') {
+      ActionSheetIOS.showActionSheetWithOptions(
+        { options: ['Edit Name', 'Delete', 'Cancel'], destructiveButtonIndex: 1, cancelButtonIndex: 2 },
+        i => { if (i === 0) onEdit(friend); if (i === 1) confirmDelete(); },
+      );
+    } else {
+      Alert.alert(friend.name, undefined, [
+        { text: 'Edit Name', onPress: () => onEdit(friend) },
+        { text: 'Delete', style: 'destructive', onPress: confirmDelete },
         { text: 'Cancel', style: 'cancel' },
-        { text: 'Remove', style: 'destructive', onPress: () => onDelete(friend.id) },
-      ]
-    );
+      ]);
+    }
   };
 
   const renderLeftAction = () => (
@@ -85,6 +99,12 @@ export function FriendCard({ friend, onCheckIn, onPress, onDelete, onAddNote }: 
         <View style={styles.content}>
           <Text style={[styles.name, { color: theme.textPrimary }]}>{friend.name}</Text>
           <Text style={[styles.time, { color: urgency }]}>{timeAgo(friend.lastCheckedIn)}</Text>
+          {groupName && (
+            <Text style={[styles.groupLabel, { color: theme.textSecondary }]}>{groupName}</Text>
+          )}
+          {noteSnippet && (
+            <Text style={[styles.noteSnippet, { color: theme.textSecondary }]} numberOfLines={2}>{noteSnippet}</Text>
+          )}
         </View>
         {friend.notes.length > 0 && (
           <View style={[styles.notesBadge, { backgroundColor: theme.badge }]}>
@@ -154,6 +174,15 @@ const styles = StyleSheet.create({
   time: {
     fontSize: 13,
     fontWeight: '500',
+  },
+  groupLabel: {
+    fontSize: 12,
+    marginTop: 3,
+  },
+  noteSnippet: {
+    fontSize: 12,
+    marginTop: 4,
+    fontStyle: 'italic',
   },
   notesBadge: {
     borderRadius: 8,

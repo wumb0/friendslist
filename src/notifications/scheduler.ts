@@ -33,14 +33,23 @@ export async function scheduleGroupReminders(groups: Group[], friends: Friend[])
         content: {
           title: 'Time to reach out',
           body: `You haven't checked in with ${groupFriends[0].name} in a while.`,
+          data: { friendId: groupFriends[0].id, groupId: group.id },
         },
         trigger:
           group.notificationFrequency === 'weekly'
             ? {
                 type: Notifications.SchedulableTriggerInputTypes.WEEKLY,
-                weekday: 2,
+                weekday: group.notificationWeekday ?? 2,
                 hour: group.notificationHour,
                 minute: group.notificationMinute,
+              }
+            : group.notificationFrequency === 'monthly'
+            ? {
+                type: Notifications.SchedulableTriggerInputTypes.CALENDAR,
+                day: group.notificationDay ?? 1,
+                hour: group.notificationHour,
+                minute: group.notificationMinute,
+                repeats: true,
               }
             : {
                 type: Notifications.SchedulableTriggerInputTypes.DAILY,
@@ -51,6 +60,36 @@ export async function scheduleGroupReminders(groups: Group[], friends: Friend[])
     }
   } catch {
     // not supported in this environment
+  }
+}
+
+type NotificationTarget = { friendId: string; groupId: string };
+
+function extractTarget(response: Notifications.NotificationResponse): NotificationTarget | null {
+  const data = response.notification.request.content.data as Record<string, unknown>;
+  if (typeof data.friendId === 'string' && typeof data.groupId === 'string') {
+    return { friendId: data.friendId, groupId: data.groupId };
+  }
+  return null;
+}
+
+export function addNotificationTapListener(handler: (target: NotificationTarget) => void): { remove: () => void } {
+  try {
+    return Notifications.addNotificationResponseReceivedListener(response => {
+      const target = extractTarget(response);
+      if (target) handler(target);
+    });
+  } catch {
+    return { remove: () => {} };
+  }
+}
+
+export async function getInitialNotificationTarget(): Promise<NotificationTarget | null> {
+  try {
+    const response = await Notifications.getLastNotificationResponseAsync();
+    return response ? extractTarget(response) : null;
+  } catch {
+    return null;
   }
 }
 

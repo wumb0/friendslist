@@ -45,8 +45,8 @@ All friend state lives in `useFriends`. All group state lives in `useGroups`. No
 | `src/hooks/useFriends.ts` | All friend state + mutations |
 | `src/hooks/useGroups.ts` | All group state + scheduling side effects |
 | `src/context/ThemeContext.tsx` | Dark mode + `remindersEnabled` flag, persisted to `app_settings_v1` |
-| `src/screens/HomeScreen.tsx` | Root screen — `SectionList` grouped by group |
-| `src/components/FriendCard.tsx` | Swipeable card |
+| `src/screens/HomeScreen.tsx` | Root screen — `FlatList` with group tab selector and cross-group search |
+| `src/components/FriendCard.tsx` | Swipeable card; long-press action sheet for Edit Name / Delete |
 | `src/components/NotesModal.tsx` | Notes + check-in history timeline; group move row |
 | `src/components/QuickNoteModal.tsx` | Bottom sheet for swipe-left note entry |
 | `src/components/AddFriendModal.tsx` | Manual entry + multi-select contacts import; group pill picker |
@@ -72,12 +72,36 @@ interface Friend { id, name, groupId: string, lastCheckedIn: number|null, create
 
 ### Group Data Model
 ```typescript
-type GroupFrequency = 'daily' | 'weekly' | 'off';
-interface Group { id, name, notificationFrequency: GroupFrequency, notificationHour: number, notificationMinute: number }
+type GroupFrequency = 'daily' | 'weekly' | 'monthly' | 'off';
+interface Group {
+  id: string;
+  name: string;                        // max 20 chars
+  notificationFrequency: GroupFrequency;
+  notificationHour: number;
+  notificationMinute: number;
+  notificationWeekday?: number;        // 1=Sun…7=Sat, used when frequency='weekly'
+  notificationDay?: number;            // 1–28, used when frequency='monthly'
+}
 ```
 - Each group has its own notification schedule
 - `'off'` suppresses notifications for that group entirely
 - `AppSettings.remindersEnabled` (in `app_settings_v1`) is a master switch that overrides all groups
+- Monthly trigger uses `CALENDAR` type with `day: notificationDay ?? 1, repeats: true`; capped at 28 to fire every month
+- Weekly trigger uses `weekday: notificationWeekday ?? 2`
+
+### HomeScreen Layout
+- Header row: title + search icon (left of settings icon). Tapping the search icon toggles the search bar.
+- Search bar is hidden by default; opens with `autoFocus` and a "Cancel" button that clears the query and closes.
+- "Include notes" toggle pill is visible as soon as the search bar opens (before any text is typed).
+- Group tab selector (horizontal `ScrollView`) is hidden while the search bar is open.
+- Search is cross-group; results show the group name below the friend's time.
+- `noteSnippet` shows a ±30-char excerpt only when the match is in a note (not the name).
+- Notification tap sets `activeGroupId` + `pendingFriendId`; a `useEffect` watching `[pendingFriendId, visibleFriends]` scrolls the `FlatList` to the friend once the correct group is rendered.
+
+### FriendCard Long-Press
+Long-pressing a card triggers a haptic + action sheet (iOS `ActionSheetIOS`) or `Alert` (Android) with:
+- **Edit Name** → opens a themed `Modal` (transparent + `presentationStyle="overFullScreen"`) pre-filled with the current name; Save calls `renameFriend` in `useFriends`.
+- **Delete** → confirmation alert then `deleteFriend`.
 
 ### Swipe Directions (Critical Gotcha)
 `FriendCard` uses `react-native-gesture-handler` `Swipeable` with both `renderLeftActions` and `renderRightActions`. When both are active, the `onSwipeableOpen` direction values are **inverted**:
@@ -108,6 +132,12 @@ const topPadding = Platform.OS === 'ios' ? insets.top + 14 : (StatusBar.currentH
 
 `scheduleGroupReminders` cancels all existing notifications then schedules one per group (targeting the most-overdue friend in that group via `sortFriends`). Groups with `notificationFrequency === 'off'` or no members are skipped. All scheduler calls are wrapped in try/catch for Expo Go compatibility.
 
+### Notification Tap Navigation
+Each scheduled notification carries `data: { friendId, groupId }`. Two handlers in `HomeScreen`:
+- **Foreground**: `addNotificationTapListener` sets `activeGroupId` + `pendingFriendId`.
+- **Cold start**: `getInitialNotificationTarget` (wraps `Notifications.getLastNotificationResponseAsync`) sets the same state on mount.
+A `useEffect` watching `[pendingFriendId, visibleFriends]` calls `listRef.current?.scrollToIndex` once the correct group's friends are rendered, then clears `pendingFriendId`.
+
 ### Data Migration
 `migrateGroups()` runs in `App.tsx` before first render (gates on a `ready` state). It is idempotent:
 - First launch: creates a default "Friends" group from any old global notification settings in `app_settings_v1`, then strips those fields from settings.
@@ -115,9 +145,11 @@ const topPadding = Platform.OS === 'ios' ? insets.top + 14 : (StatusBar.currentH
 
 ### Group Management
 Groups are managed via Settings → Reminders → Groups & Schedules (`GroupsModal`):
-- Add a new group with custom name and notification schedule
-- Edit any group's name or schedule
-- Delete a group — if it has members, an alert offers to move them to another group before deleting; cannot delete the last group
+- Add a new group with custom name (max 20 chars) and notification schedule
+- Edit any group's name or schedule; frequency options: daily, weekly (pick day of week), monthly (pick day 1–28), off
+- Delete a group — if it has members, an action sheet offers to move them to another group before deleting; cannot delete the last group
+- Groups & Schedules is always accessible even when the master reminders switch is off; a banner explains the disabled state
+- Android back button in the edit-schedule view returns to the groups list (not all the way out to Settings)
 
 ## App Config
 - Package: `in.wumb0.friendslist`

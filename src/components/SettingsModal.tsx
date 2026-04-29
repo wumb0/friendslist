@@ -51,14 +51,8 @@ export function SettingsModal({ visible, onClose, onOpenGroups }: Props) {
             />
           </View>
           <View style={[styles.separator, { backgroundColor: theme.border }]} />
-          <TouchableOpacity
-            style={[styles.row, !settings.remindersEnabled && styles.rowDisabled]}
-            onPress={onOpenGroups}
-            disabled={!settings.remindersEnabled}
-          >
-            <Text style={[styles.rowLabel, { color: settings.remindersEnabled ? theme.textPrimary : theme.textSecondary }]}>
-              Groups & Schedules
-            </Text>
+          <TouchableOpacity style={styles.row} onPress={onOpenGroups}>
+            <Text style={[styles.rowLabel, { color: theme.textPrimary }]}>Groups & Schedules</Text>
             <Ionicons name="chevron-forward" size={18} color={theme.textSecondary} />
           </TouchableOpacity>
         </View>

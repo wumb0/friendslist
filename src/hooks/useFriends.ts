@@ -65,6 +65,14 @@ export function useFriends() {
     await reload();
   };
 
+  const renameFriend = async (id: string, name: string): Promise<void> => {
+    const all = await repo.getAll();
+    const friend = all.find(f => f.id === id);
+    if (!friend) return;
+    await repo.save({ ...friend, name: name.trim() });
+    await reload();
+  };
+
   const moveToGroup = async (friendId: string, groupId: string): Promise<void> => {
     const all = await repo.getAll();
     const friend = all.find(f => f.id === friendId);
@@ -81,5 +89,5 @@ export function useFriends() {
     await reload();
   };
 
-  return { friends, loading, addFriends, checkIn, addNote, updateNote, deleteNote, deleteFriend, convertCheckInToNote, moveToGroup, moveGroupMembers };
+  return { friends, loading, addFriends, checkIn, addNote, updateNote, deleteNote, deleteFriend, convertCheckInToNote, moveToGroup, moveGroupMembers, renameFriend };
 }

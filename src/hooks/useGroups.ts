@@ -32,8 +32,8 @@ export function useGroups(friends: Friend[]) {
     }
   }, [groups, friends, settings.remindersEnabled]);
 
-  const addGroup = async (name: string, notificationFrequency: GroupFrequency, notificationHour: number, notificationMinute: number): Promise<Group> => {
-    const group: Group = { id: generateId(), name: name.trim(), notificationFrequency, notificationHour, notificationMinute };
+  const addGroup = async (name: string, notificationFrequency: GroupFrequency, notificationHour: number, notificationMinute: number, notificationWeekday: number, notificationDay: number): Promise<Group> => {
+    const group: Group = { id: generateId(), name: name.trim(), notificationFrequency, notificationHour, notificationMinute, notificationWeekday, notificationDay };
     await repo.save(group);
     await reload();
     return group;

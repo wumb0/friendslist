@@ -1,37 +1,14 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { Group, Schedule, ScheduleFrequency } from '../types/Group';
+import { Group } from '../types/Group';
 import { GroupRepository } from './GroupRepository';
-import { generateId } from '../utils/uuid';
 
 const STORAGE_KEY = 'groups_v1';
-
-function migrateGroup(g: any): Group {
-  if (Array.isArray(g.schedules)) {
-    return { significantDatesEnabled: true, ...g } as Group;
-  }
-  // legacy flat-field shape
-  const freq: string = g.notificationFrequency ?? 'off';
-  const schedules: Schedule[] = freq === 'off' ? [] : [{
-    id: generateId(),
-    frequency: freq as ScheduleFrequency,
-    hour: g.notificationHour ?? 9,
-    minute: g.notificationMinute ?? 0,
-    weekday: g.notificationWeekday,
-    day: g.notificationDay,
-  }];
-  return {
-    id: g.id,
-    name: g.name,
-    schedules,
-    significantDatesEnabled: g.significantDatesEnabled ?? true,
-  };
-}
 
 export class AsyncStorageGroupRepository implements GroupRepository {
   async getAll(): Promise<Group[]> {
     const json = await AsyncStorage.getItem(STORAGE_KEY);
     if (!json) return [];
-    return (JSON.parse(json) as any[]).map(migrateGroup);
+    return JSON.parse(json) as Group[];
   }
 
   private async saveAll(groups: Group[]): Promise<void> {

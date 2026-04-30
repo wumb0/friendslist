@@ -434,7 +434,7 @@ export function GroupsModal({ visible, onClose, groups, friends, onAddGroup, onU
                 style={styles.row}
                 onPress={() => setEditing(e => e ? { ...e, significantDatesEnabled: !e.significantDatesEnabled } : e)}
               >
-                <Text style={[styles.rowLabel, { color: theme.textPrimary }]}>Birthday & anniversary reminders</Text>
+                <Text style={[styles.rowLabel, { color: theme.textPrimary }]}>Significant date reminders</Text>
                 <Ionicons
                   name={editing.significantDatesEnabled ? 'checkbox' : 'square-outline'}
                   size={20}

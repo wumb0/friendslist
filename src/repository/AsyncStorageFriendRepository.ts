@@ -5,29 +5,11 @@ import { generateId } from '../utils/uuid';
 
 const STORAGE_KEY = 'friends_v1';
 
-function migrate(raw: any): Friend {
-  let notes: FriendNote[] = [];
-  if (typeof raw.notes === 'string') {
-    if (raw.notes.trim()) {
-      notes = [{ id: generateId(), content: raw.notes.trim(), createdAt: raw.createdAt ?? Date.now() }];
-    }
-  } else if (Array.isArray(raw.notes)) {
-    notes = raw.notes;
-  }
-  return {
-    ...raw,
-    notes,
-    checkIns: Array.isArray(raw.checkIns) ? raw.checkIns : [],
-    significantDates: Array.isArray(raw.significantDates) ? raw.significantDates : [],
-    oneTimeEvents: Array.isArray(raw.oneTimeEvents) ? raw.oneTimeEvents : [],
-  };
-}
-
 export class AsyncStorageFriendRepository implements FriendRepository {
   async getAll(): Promise<Friend[]> {
     const json = await AsyncStorage.getItem(STORAGE_KEY);
     if (!json) return [];
-    return (JSON.parse(json) as any[]).map(migrate);
+    return JSON.parse(json) as Friend[];
   }
 
   private async saveAll(friends: Friend[]): Promise<void> {

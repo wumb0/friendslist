@@ -51,7 +51,7 @@ export function SettingsModal({ visible, onClose, onOpenGroups }: Props) {
             />
           </View>
           <View style={[styles.separator, { backgroundColor: theme.border }]} />
-          <TouchableOpacity style={styles.row} onPress={onOpenGroups}>
+          <TouchableOpacity style={[styles.row, styles.navRow]} onPress={onOpenGroups}>
             <Text style={[styles.rowLabel, { color: theme.textPrimary }]}>Groups & Schedules</Text>
             <Ionicons name="chevron-forward" size={18} color={theme.textSecondary} />
           </TouchableOpacity>
@@ -100,6 +100,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 14,
   },
+  navRow: { paddingVertical: 17 },
   rowDisabled: { opacity: 0.4 },
   rowLabel: { fontSize: 16 },
   separator: { height: StyleSheet.hairlineWidth, marginHorizontal: 16 },

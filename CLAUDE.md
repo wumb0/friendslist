@@ -55,7 +55,6 @@ All friend state lives in `useFriends`. All group state lives in `useGroups`. No
 | `src/components/GroupsModal.tsx` | Add / edit / delete groups; per-group notification schedule |
 | `src/components/Toast.tsx` | "Checked in with {name}" pill |
 | `src/notifications/scheduler.ts` | expo-notifications — `refreshScheduledNotifications` (group repeating triggers + yearly significant-date triggers + one-shot event DATE triggers) + `cancelAllReminders` |
-| `src/utils/migrateGroups.ts` | One-time migration: creates default group from old global settings |
 | `src/utils/cleanupExpiredEvents.ts` | Scans all friends on startup and deletes `oneTimeEvents` whose `eventDate` is in the past |
 | `src/utils/timeAgo.ts` | Relative time formatting + urgency color |
 | `src/utils/sortFriends.ts` | null lastCheckedIn sorts first (most overdue) |
@@ -104,7 +103,6 @@ interface Group {
 - `AppSettings.remindersEnabled` (in `app_settings_v1`) is a master switch that overrides all groups
 - `daily` → `DAILY` repeating trigger; `weekly` → `WEEKLY` repeating trigger; `monthly` → `CALENDAR` repeating trigger with `day` and `repeats: true`
 - `significantDatesEnabled` gates the yearly significant-date notification stream for the group; defaults to `true` in the migration
-- Old flat-field shape (`notificationFrequency`, `notificationHour`, etc.) is migrated to `schedules[]` on read in `AsyncStorageGroupRepository.getAll()`
 
 ### HomeScreen Layout
 - Header row: title + search icon (left of settings icon). Tapping the search icon toggles the search bar.
@@ -178,10 +176,8 @@ Each scheduled notification carries `data: { groupId, friendId? }` (`friendId` i
 - **Cold start**: `getInitialNotificationTarget` (wraps `Notifications.getLastNotificationResponseAsync`) sets the same state on mount.
 A `useEffect` watching `[pendingFriendId, visibleFriends]` calls `listRef.current?.scrollToIndex` once the correct group's friends are rendered, then clears `pendingFriendId`.
 
-### Data Migration
-`migrateGroups()` and `cleanupExpiredEvents()` both run in `App.tsx` before first render (gates on a `ready` state via `Promise.all`). `migrateGroups()` is idempotent:
-- First launch: creates a default "Friends" group from any old global notification settings in `app_settings_v1`, then strips those fields from settings.
-- Every launch: assigns any friends missing a `groupId` to the first group (handles partial-failure recovery).
+### Startup
+`cleanupExpiredEvents()` runs in `App.tsx` before first render (gates on a `ready` state). It scans all friends and deletes any `oneTimeEvents` whose `eventDate` is in the past.
 
 ### Group Management
 Groups are managed via Settings → Reminders → Groups & Schedules (`GroupsModal`). Three-level navigation (push-style, single Modal):

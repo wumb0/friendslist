@@ -10,7 +10,7 @@ export async function cleanupExpiredEvents(repo: FriendRepository): Promise<void
   const friends = await repo.getAll();
   const cutoff = startOfToday();
   for (const friend of friends) {
-    const expired = (friend.oneTimeEvents ?? [])
+    const expired = friend.oneTimeEvents
       .filter(e => e.eventDate < cutoff)
       .map(e => e.id);
     if (expired.length > 0) {

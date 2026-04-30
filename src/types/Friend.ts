@@ -1,12 +1,19 @@
-import { SignificantDate } from './SignificantDate';
-
-export { SignificantDate };
-
 export interface FriendNote {
   id: string;
   content: string;
   createdAt: number;
   pinned?: boolean;
+}
+
+export interface SignificantDate {
+  id: string;
+  label: string;
+  month: number;
+  day: number;
+  year?: number;
+  notifyEnabled: boolean;
+  notifyHour: number;
+  notifyMinute: number;
 }
 
 export interface OneTimeEvent {
@@ -27,6 +34,6 @@ export interface Friend {
   createdAt: number;
   notes: FriendNote[];
   checkIns: number[];
-  significantDates?: SignificantDate[];
-  oneTimeEvents?: OneTimeEvent[];
+  significantDates: SignificantDate[];
+  oneTimeEvents: OneTimeEvent[];
 }

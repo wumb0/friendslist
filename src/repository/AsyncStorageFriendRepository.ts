@@ -117,7 +117,7 @@ export class AsyncStorageFriendRepository implements FriendRepository {
     if (idx >= 0) {
       friends[idx] = {
         ...friends[idx],
-        significantDates: [...(friends[idx].significantDates ?? []), date],
+        significantDates: [...friends[idx].significantDates, date],
       };
       await this.saveAll(friends);
     }
@@ -129,7 +129,7 @@ export class AsyncStorageFriendRepository implements FriendRepository {
     if (idx >= 0) {
       friends[idx] = {
         ...friends[idx],
-        significantDates: (friends[idx].significantDates ?? []).map(d =>
+        significantDates: friends[idx].significantDates.map(d =>
           d.id === dateId ? { ...d, ...updates } : d
         ),
       };
@@ -143,7 +143,7 @@ export class AsyncStorageFriendRepository implements FriendRepository {
     if (idx >= 0) {
       friends[idx] = {
         ...friends[idx],
-        significantDates: (friends[idx].significantDates ?? []).filter(d => d.id !== dateId),
+        significantDates: friends[idx].significantDates.filter(d => d.id !== dateId),
       };
       await this.saveAll(friends);
     }
@@ -155,7 +155,7 @@ export class AsyncStorageFriendRepository implements FriendRepository {
     if (idx >= 0) {
       friends[idx] = {
         ...friends[idx],
-        oneTimeEvents: [...(friends[idx].oneTimeEvents ?? []), event],
+        oneTimeEvents: [...friends[idx].oneTimeEvents, event],
       };
       await this.saveAll(friends);
     }
@@ -167,7 +167,7 @@ export class AsyncStorageFriendRepository implements FriendRepository {
     if (idx >= 0) {
       friends[idx] = {
         ...friends[idx],
-        oneTimeEvents: (friends[idx].oneTimeEvents ?? []).map(e =>
+        oneTimeEvents: friends[idx].oneTimeEvents.map(e =>
           e.id === eventId ? { ...e, ...updates } : e
         ),
       };
@@ -181,7 +181,7 @@ export class AsyncStorageFriendRepository implements FriendRepository {
     if (idx >= 0) {
       friends[idx] = {
         ...friends[idx],
-        oneTimeEvents: (friends[idx].oneTimeEvents ?? []).filter(e => e.id !== eventId),
+        oneTimeEvents: friends[idx].oneTimeEvents.filter(e => e.id !== eventId),
       };
       await this.saveAll(friends);
     }
@@ -193,7 +193,7 @@ export class AsyncStorageFriendRepository implements FriendRepository {
     if (idx >= 0) {
       friends[idx] = {
         ...friends[idx],
-        oneTimeEvents: (friends[idx].oneTimeEvents ?? []).filter(e => !eventIds.includes(e.id)),
+        oneTimeEvents: friends[idx].oneTimeEvents.filter(e => !eventIds.includes(e.id)),
       };
       await this.saveAll(friends);
     }

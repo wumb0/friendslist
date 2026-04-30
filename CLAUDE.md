@@ -36,8 +36,7 @@ All friend state lives in `useFriends`. All group state lives in `useGroups`. No
 ### Key Files
 | File | Purpose |
 |------|---------|
-| `src/types/Friend.ts` | `Friend`, `FriendNote`, `OneTimeEvent`, and re-exported `SignificantDate` types |
-| `src/types/SignificantDate.ts` | `SignificantDate` type |
+| `src/types/Friend.ts` | `Friend`, `FriendNote`, `SignificantDate`, and `OneTimeEvent` types |
 | `src/types/Group.ts` | `Group`, `Schedule`, and `ScheduleFrequency` types |
 | `src/repository/FriendRepository.ts` | Friend repository interface |
 | `src/repository/AsyncStorageFriendRepository.ts` | AsyncStorage implementation |
@@ -48,7 +47,9 @@ All friend state lives in `useFriends`. All group state lives in `useGroups`. No
 | `src/context/ThemeContext.tsx` | Dark mode + `remindersEnabled` flag, persisted to `app_settings_v1` |
 | `src/screens/HomeScreen.tsx` | Root screen — `FlatList` with group tab selector and cross-group search |
 | `src/components/FriendCard.tsx` | Swipeable card; long-press action sheet for Edit Name / Delete |
-| `src/components/NotesModal.tsx` | Two-tab modal: History (notes + check-in timeline) and Dates (significant dates); group move row |
+| `src/components/NotesModal.tsx` | Two-tab modal: History (notes + check-in timeline) and Dates (significant dates + one-time events); group move row |
+| `src/components/DateForm.tsx` | `DateForm` (add/edit significant dates) + `DateCard` + shared `dateFormStyles`/`dateCardStyles` |
+| `src/components/EventForm.tsx` | `EventForm` (add/edit one-time events) + `EventCard`; reuses `dateFormStyles` from `DateForm` |
 | `src/components/QuickNoteModal.tsx` | Bottom sheet for swipe-left note entry |
 | `src/components/AddFriendModal.tsx` | Manual entry + multi-select contacts import; group pill picker |
 | `src/components/SettingsModal.tsx` | Dark mode + reminders master switch + link to GroupsModal |
@@ -56,6 +57,7 @@ All friend state lives in `useFriends`. All group state lives in `useGroups`. No
 | `src/components/Toast.tsx` | "Checked in with {name}" pill |
 | `src/notifications/scheduler.ts` | expo-notifications — `refreshScheduledNotifications` (group repeating triggers + yearly significant-date triggers + one-shot event DATE triggers) + `cancelAllReminders` |
 | `src/utils/cleanupExpiredEvents.ts` | Scans all friends on startup and deletes `oneTimeEvents` whose `eventDate` is in the past |
+| `src/utils/formatTime.ts` | `formatTime(hour, minute)` → `"9:00 AM"` style string; shared by GroupsModal, DateForm, EventForm |
 | `src/utils/timeAgo.ts` | Relative time formatting + urgency color |
 | `src/utils/sortFriends.ts` | null lastCheckedIn sorts first (most overdue) |
 | `android/.../NightModeModule.kt` | Native Kotlin module: calls `AppCompatDelegate.setDefaultNightMode()` so native dialogs follow app dark mode |
@@ -66,7 +68,7 @@ All friend state lives in `useFriends`. All group state lives in `useGroups`. No
 interface FriendNote { id, content, createdAt: number, pinned?: boolean }
 interface SignificantDate { id, label: string, month: number, day: number, year?: number, notifyEnabled: boolean, notifyHour: number, notifyMinute: number }
 interface OneTimeEvent { id, label: string, eventDate: number, notifyDaysBefore: number, notifyHour: number, notifyMinute: number, notifyEnabled: boolean }
-interface Friend { id, name, groupId: string, lastCheckedIn: number|null, createdAt, notes: FriendNote[], checkIns: number[], significantDates?: SignificantDate[], oneTimeEvents?: OneTimeEvent[] }
+interface Friend { id, name, groupId: string, lastCheckedIn: number|null, createdAt, notes: FriendNote[], checkIns: number[], significantDates: SignificantDate[], oneTimeEvents: OneTimeEvent[] }
 ```
 - `groupId` — every friend belongs to exactly one group
 - `checkIns[]` — timestamps from plain right-swipe check-ins only
@@ -74,9 +76,9 @@ interface Friend { id, name, groupId: string, lastCheckedIn: number|null, create
 - Adding a note removes any same-day check-in entry (note supersedes it)
 - Deleting a note converts it back to a check-in entry (same timestamp)
 - Check-ins are deduped per calendar day
-- `significantDates[]` — birthdays, anniversaries, etc.; optional, defaults to `[]` in `migrate()`
+- `significantDates[]` — birthdays, anniversaries, etc.; required, always `[]` or populated
 - `SignificantDate.month` is 1-based (1 = January); `year` is optional (omit for year-less dates like "March 15")
-- `oneTimeEvents[]` — future one-time reminders (surgery, trip, etc.); optional, defaults to `[]` in `migrate()`
+- `oneTimeEvents[]` — future one-time reminders (surgery, trip, etc.); required, always `[]` or populated
 - `OneTimeEvent.eventDate` is a midnight-local timestamp; `notifyDaysBefore` is 0|1|2|7
 - Expired one-time events (eventDate < today) are auto-deleted on app startup via `cleanupExpiredEvents()`
 

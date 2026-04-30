@@ -19,6 +19,7 @@ import { useTheme } from '../context/ThemeContext';
 import { Group, Schedule, ScheduleFrequency } from '../types/Group';
 import { Friend } from '../types/Friend';
 import { generateId } from '../utils/uuid';
+import { formatTime } from '../utils/formatTime';
 
 interface Props {
   visible: boolean;
@@ -46,13 +47,6 @@ const WEEKDAYS = [
   { label: 'Fri', value: 6 },
   { label: 'Sat', value: 7 },
 ];
-
-function formatTime(hour: number, minute: number): string {
-  const period = hour >= 12 ? 'PM' : 'AM';
-  const h = hour % 12 === 0 ? 12 : hour % 12;
-  const m = minute.toString().padStart(2, '0');
-  return `${h}:${m} ${period}`;
-}
 
 function ordinal(n: number): string {
   const s = ['th', 'st', 'nd', 'rd'];
@@ -280,7 +274,7 @@ export function GroupsModal({ visible, onClose, groups, friends, onAddGroup, onU
               {FREQUENCIES.map((f, i) => (
                 <View key={f.value}>
                   <TouchableOpacity
-                    style={styles.freqRow}
+                    style={styles.row}
                     onPress={() => setScheduleEditor(e => e ? { ...e, frequency: f.value } : e)}
                   >
                     <View style={styles.freqLabels}>
@@ -545,13 +539,6 @@ const styles = StyleSheet.create({
   },
   rowLabel: { fontSize: 16 },
   nameInput: { paddingHorizontal: 16, paddingVertical: 14, fontSize: 16 },
-  freqRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 16,
-    paddingVertical: 14,
-  },
   freqLabels: { flex: 1 },
   sublabel: { fontSize: 13, marginTop: 2 },
   selectedCheck: { fontSize: 18, fontWeight: '600' },

@@ -101,7 +101,6 @@ const styles = StyleSheet.create({
     paddingVertical: 14,
   },
   navRow: { paddingVertical: 17 },
-  rowDisabled: { opacity: 0.4 },
   rowLabel: { fontSize: 16 },
   separator: { height: StyleSheet.hairlineWidth, marginHorizontal: 16 },
 });

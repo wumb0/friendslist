@@ -19,7 +19,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import DateTimePicker, { DateTimePickerEvent } from '@react-native-community/datetimepicker';
 import * as Contacts from 'expo-contacts';
-import { Friend, FriendNote, SignificantDate } from '../types/Friend';
+import { Friend, FriendNote, SignificantDate, OneTimeEvent } from '../types/Friend';
 import { Group } from '../types/Group';
 import { useTheme } from '../context/ThemeContext';
 
@@ -35,6 +35,9 @@ interface Props {
   onAddSignificantDate: (friendId: string, data: Omit<SignificantDate, 'id'>) => void;
   onUpdateSignificantDate: (friendId: string, dateId: string, updates: Partial<Omit<SignificantDate, 'id'>>) => void;
   onDeleteSignificantDate: (friendId: string, dateId: string) => void;
+  onAddOneTimeEvent: (friendId: string, data: Omit<OneTimeEvent, 'id'>) => void;
+  onUpdateOneTimeEvent: (friendId: string, eventId: string, updates: Partial<Omit<OneTimeEvent, 'id'>>) => void;
+  onDeleteOneTimeEvent: (friendId: string, eventId: string) => void;
 }
 
 type Tab = 'history' | 'dates';
@@ -346,6 +349,217 @@ const dateCardStyles = StyleSheet.create({
   dateText: { fontSize: 13 },
 });
 
+// ── Event form (add/edit one-time event) ──────────────────────────────────────
+
+interface EventFormState {
+  id: string | null;
+  label: string;
+  pickerDate: Date;
+  notifyEnabled: boolean;
+  notifyDaysBefore: number;
+  notifyHour: number;
+  notifyMinute: number;
+}
+
+const NOTIFY_OFFSETS: { label: string; value: number }[] = [
+  { label: 'Same day', value: 0 },
+  { label: '1 day before', value: 1 },
+  { label: '2 days before', value: 2 },
+  { label: '1 week before', value: 7 },
+];
+
+function EventForm({
+  initial,
+  onSave,
+  onCancel,
+  theme,
+}: {
+  initial: EventFormState;
+  onSave: (state: EventFormState) => void;
+  onCancel: () => void;
+  theme: ReturnType<typeof useTheme>['theme'];
+}) {
+  const [label, setLabel] = useState(initial.label);
+  const [pickerDate, setPickerDate] = useState(initial.pickerDate);
+  const [notifyEnabled, setNotifyEnabled] = useState(initial.notifyEnabled);
+  const [notifyDaysBefore, setNotifyDaysBefore] = useState(initial.notifyDaysBefore);
+  const [notifyHour, setNotifyHour] = useState(initial.notifyHour);
+  const [notifyMinute, setNotifyMinute] = useState(initial.notifyMinute);
+  const [showDatePicker, setShowDatePicker] = useState(false);
+  const [showTimePicker, setShowTimePicker] = useState(false);
+
+  const handleDateChange = (_event: DateTimePickerEvent, date?: Date) => {
+    if (Platform.OS === 'android') setShowDatePicker(false);
+    if (date) setPickerDate(date);
+  };
+
+  const handleTimeChange = (_event: DateTimePickerEvent, date?: Date) => {
+    if (Platform.OS === 'android') setShowTimePicker(false);
+    if (date) { setNotifyHour(date.getHours()); setNotifyMinute(date.getMinutes()); }
+  };
+
+  const timePicker = new Date();
+  timePicker.setHours(notifyHour, notifyMinute, 0, 0);
+
+  const canSave = label.trim().length > 0;
+
+  return (
+    <ScrollView contentContainerStyle={dateFormStyles.container} keyboardShouldPersistTaps="handled">
+      <Text style={[dateFormStyles.sectionLabel, { color: theme.textSecondary }]}>LABEL</Text>
+      <TextInput
+        style={[dateFormStyles.labelInput, { color: theme.textPrimary, borderColor: theme.border, backgroundColor: theme.input }]}
+        value={label}
+        onChangeText={setLabel}
+        placeholder="e.g. Surgery, Graduation…"
+        placeholderTextColor={theme.placeholder}
+        maxLength={40}
+      />
+
+      <Text style={[dateFormStyles.sectionLabel, { color: theme.textSecondary }]}>DATE</Text>
+      <TouchableOpacity
+        style={[dateFormStyles.row, { backgroundColor: theme.card, borderColor: theme.border }]}
+        onPress={() => setShowDatePicker(v => !v)}
+      >
+        <Text style={[dateFormStyles.rowLabel, { color: theme.textPrimary }]}>Date</Text>
+        <Text style={[dateFormStyles.rowValue, { color: theme.accent }]}>
+          {pickerDate.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}
+        </Text>
+      </TouchableOpacity>
+      {showDatePicker && (
+        <DateTimePicker
+          value={pickerDate}
+          mode="date"
+          display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+          onChange={handleDateChange}
+          textColor={theme.textPrimary}
+          themeVariant={theme.isDark ? 'dark' : 'light'}
+        />
+      )}
+
+      <Text style={[dateFormStyles.sectionLabel, { color: theme.textSecondary }]}>NOTIFICATION</Text>
+      <TouchableOpacity
+        style={[dateFormStyles.row, { backgroundColor: theme.card, borderColor: theme.border }]}
+        onPress={() => setNotifyEnabled(v => !v)}
+      >
+        <Text style={[dateFormStyles.rowLabel, { color: theme.textPrimary }]}>Notify me</Text>
+        <Ionicons name={notifyEnabled ? 'checkbox' : 'square-outline'} size={20} color={notifyEnabled ? theme.accent : theme.textSecondary} />
+      </TouchableOpacity>
+      {notifyEnabled && (
+        <>
+          <View style={[dateFormStyles.row, { backgroundColor: theme.card, borderColor: theme.border, marginTop: 8, flexWrap: 'wrap', gap: 6, justifyContent: 'flex-start', paddingVertical: 10 }]}>
+            {NOTIFY_OFFSETS.map(opt => (
+              <TouchableOpacity
+                key={opt.value}
+                onPress={() => setNotifyDaysBefore(opt.value)}
+                style={[eventFormStyles.offsetChip, {
+                  backgroundColor: notifyDaysBefore === opt.value ? theme.accent : theme.badge,
+                  borderColor: notifyDaysBefore === opt.value ? theme.accent : theme.border,
+                }]}
+              >
+                <Text style={[eventFormStyles.offsetChipText, { color: notifyDaysBefore === opt.value ? '#fff' : theme.textSecondary }]}>
+                  {opt.label}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+          <TouchableOpacity
+            style={[dateFormStyles.row, { backgroundColor: theme.card, borderColor: theme.border, marginTop: 8 }]}
+            onPress={() => setShowTimePicker(v => !v)}
+          >
+            <Text style={[dateFormStyles.rowLabel, { color: theme.textPrimary }]}>Notify at</Text>
+            <Text style={[dateFormStyles.rowValue, { color: theme.accent }]}>{formatTime(notifyHour, notifyMinute)}</Text>
+          </TouchableOpacity>
+          {showTimePicker && (
+            <DateTimePicker
+              value={timePicker}
+              mode="time"
+              display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+              onChange={handleTimeChange}
+              textColor={theme.textPrimary}
+              themeVariant={theme.isDark ? 'dark' : 'light'}
+            />
+          )}
+        </>
+      )}
+
+      <View style={dateFormStyles.buttons}>
+        <TouchableOpacity onPress={onCancel} style={[dateFormStyles.btn, { borderColor: theme.border }]}>
+          <Text style={[dateFormStyles.btnCancelText, { color: theme.textSecondary }]}>Cancel</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          onPress={() => {
+            if (!canSave) return;
+            onSave({ id: initial.id, label: label.trim(), pickerDate, notifyEnabled, notifyDaysBefore, notifyHour, notifyMinute });
+          }}
+          style={[dateFormStyles.btn, { backgroundColor: canSave ? theme.accent : theme.border }]}
+          disabled={!canSave}
+        >
+          <Text style={dateFormStyles.btnSaveText}>Save</Text>
+        </TouchableOpacity>
+      </View>
+    </ScrollView>
+  );
+}
+
+const eventFormStyles = StyleSheet.create({
+  offsetChip: {
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 14,
+    borderWidth: 1,
+  },
+  offsetChipText: { fontSize: 13, fontWeight: '500' },
+});
+
+// ── Event card ─────────────────────────────────────────────────────────────────
+
+function EventCard({
+  event,
+  onEdit,
+  onDelete,
+  theme,
+}: {
+  event: OneTimeEvent;
+  onEdit: () => void;
+  onDelete: () => void;
+  theme: ReturnType<typeof useTheme>['theme'];
+}) {
+  const handleLongPress = () => {
+    if (Platform.OS === 'ios') {
+      ActionSheetIOS.showActionSheetWithOptions(
+        { options: ['Edit', 'Delete', 'Cancel'], destructiveButtonIndex: 1, cancelButtonIndex: 2 },
+        i => { if (i === 0) onEdit(); else if (i === 1) onDelete(); },
+      );
+    } else {
+      Alert.alert(event.label, undefined, [
+        { text: 'Edit', onPress: onEdit },
+        { text: 'Delete', style: 'destructive', onPress: onDelete },
+        { text: 'Cancel', style: 'cancel' },
+      ]);
+    }
+  };
+
+  const dateStr = new Date(event.eventDate).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
+
+  return (
+    <TouchableOpacity
+      onPress={onEdit}
+      onLongPress={handleLongPress}
+      delayLongPress={400}
+      style={[dateCardStyles.card, { backgroundColor: theme.card, borderColor: theme.border }]}
+      activeOpacity={0.7}
+    >
+      <View style={dateCardStyles.left}>
+        <Text style={[dateCardStyles.label, { color: theme.textPrimary }]}>{event.label}</Text>
+        <Text style={[dateCardStyles.dateText, { color: theme.textSecondary }]}>{dateStr}</Text>
+      </View>
+      {event.notifyEnabled && (
+        <Ionicons name="notifications" size={16} color={theme.accent} />
+      )}
+    </TouchableOpacity>
+  );
+}
+
 // ── Note card ─────────────────────────────────────────────────────────────────
 
 function NoteCard({ item, friendId, onUpdate, onDelete, theme }: {
@@ -480,6 +694,7 @@ function CheckInRow({ ts, theme, onConvertToNote }: {
 export function NotesModal({
   friend, visible, onClose, onUpdateNote, onDeleteNote, onConvertCheckIn,
   groups, onMoveGroup, onAddSignificantDate, onUpdateSignificantDate, onDeleteSignificantDate,
+  onAddOneTimeEvent, onUpdateOneTimeEvent, onDeleteOneTimeEvent,
 }: Props) {
   const { theme } = useTheme();
   const insets = useSafeAreaInsets();
@@ -487,6 +702,7 @@ export function NotesModal({
   const [groupPickerVisible, setGroupPickerVisible] = useState(false);
   const [activeTab, setActiveTab] = useState<Tab>('history');
   const [editingDate, setEditingDate] = useState<DateFormState | null>(null);
+  const [editingEvent, setEditingEvent] = useState<EventFormState | null>(null);
   const [importingBirthday, setImportingBirthday] = useState(false);
 
   if (!friend) return null;
@@ -494,6 +710,9 @@ export function NotesModal({
   const timeline = buildTimeline(friend);
   const currentGroup = groups.find(g => g.id === friend.groupId);
   const significantDates = friend.significantDates ?? [];
+  const oneTimeEvents = friend.oneTimeEvents ?? [];
+  const defaultNotifyHour = currentGroup?.schedules[0]?.hour ?? 9;
+  const defaultNotifyMinute = currentGroup?.schedules[0]?.minute ?? 0;
 
   const handleOpenNewDate = () => {
     setEditingDate({
@@ -502,8 +721,8 @@ export function NotesModal({
       pickerDate: new Date(2000, 0, 1),
       includeYear: false,
       notifyEnabled: true,
-      notifyHour: currentGroup?.notificationHour ?? 9,
-      notifyMinute: currentGroup?.notificationMinute ?? 0,
+      notifyHour: defaultNotifyHour,
+      notifyMinute: defaultNotifyMinute,
     });
   };
 
@@ -583,8 +802,8 @@ export function NotesModal({
                 day,
                 year,
                 notifyEnabled: true,
-                notifyHour: currentGroup?.notificationHour ?? 9,
-                notifyMinute: currentGroup?.notificationMinute ?? 0,
+                notifyHour: defaultNotifyHour,
+                notifyMinute: defaultNotifyMinute,
               });
             },
           },
@@ -595,22 +814,77 @@ export function NotesModal({
     }
   };
 
+  const handleOpenNewEvent = () => {
+    setEditingEvent({
+      id: null,
+      label: '',
+      pickerDate: new Date(),
+      notifyEnabled: true,
+      notifyDaysBefore: 0,
+      notifyHour: defaultNotifyHour,
+      notifyMinute: defaultNotifyMinute,
+    });
+  };
+
+  const handleOpenEditEvent = (event: OneTimeEvent) => {
+    setEditingEvent({
+      id: event.id,
+      label: event.label,
+      pickerDate: new Date(event.eventDate),
+      notifyEnabled: event.notifyEnabled,
+      notifyDaysBefore: event.notifyDaysBefore,
+      notifyHour: event.notifyHour,
+      notifyMinute: event.notifyMinute,
+    });
+  };
+
+  const handleSaveEvent = (state: EventFormState) => {
+    const d = new Date(state.pickerDate);
+    d.setHours(0, 0, 0, 0);
+    const data: Omit<OneTimeEvent, 'id'> = {
+      label: state.label,
+      eventDate: d.getTime(),
+      notifyDaysBefore: state.notifyDaysBefore,
+      notifyEnabled: state.notifyEnabled,
+      notifyHour: state.notifyHour,
+      notifyMinute: state.notifyMinute,
+    };
+    if (state.id) {
+      onUpdateOneTimeEvent(friend.id, state.id, data);
+    } else {
+      onAddOneTimeEvent(friend.id, data);
+    }
+    setEditingEvent(null);
+  };
+
+  const handleDeleteEvent = (eventId: string) => {
+    Alert.alert('Delete Event', 'Remove this one-time event?', [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Delete', style: 'destructive', onPress: () => onDeleteOneTimeEvent(friend.id, eventId) },
+    ]);
+  };
+
   const handleClose = () => {
     setEditingDate(null);
+    setEditingEvent(null);
     setActiveTab('history');
     onClose();
   };
 
   return (
-    <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={() => editingDate ? setEditingDate(null) : handleClose()}>
+    <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={() => editingEvent ? setEditingEvent(null) : editingDate ? setEditingDate(null) : handleClose()}>
       <View style={[styles.container, { backgroundColor: theme.background }]}>
         {/* Header */}
         <View style={[styles.header, { backgroundColor: theme.header, borderBottomColor: theme.border, paddingTop: topPadding }]}>
           <View style={{ width: 60 }} />
           <Text style={[styles.title, { color: theme.textPrimary }]}>
-            {editingDate ? (editingDate.id ? 'Edit Date' : 'Add Date') : friend.name}
+            {editingEvent
+              ? (editingEvent.id ? 'Edit Event' : 'Add Event')
+              : editingDate
+              ? (editingDate.id ? 'Edit Date' : 'Add Date')
+              : friend.name}
           </Text>
-          {editingDate ? (
+          {editingDate || editingEvent ? (
             <View style={{ width: 60 }} />
           ) : (
             <TouchableOpacity onPress={handleClose} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
@@ -620,7 +894,7 @@ export function NotesModal({
         </View>
 
         {/* Group row (only on main view) */}
-        {!editingDate && currentGroup && (
+        {!editingDate && !editingEvent && currentGroup && (
           <TouchableOpacity
             style={[styles.groupRow, { borderBottomColor: theme.border }]}
             onPress={() => { if (groups.length > 1) setGroupPickerVisible(true); }}
@@ -635,7 +909,7 @@ export function NotesModal({
         )}
 
         {/* Tab switcher (only on main view) */}
-        {!editingDate && (
+        {!editingDate && !editingEvent && (
           <View style={[styles.tabBar, { borderBottomColor: theme.border }]}>
             {(['history', 'dates'] as Tab[]).map(t => (
               <TouchableOpacity
@@ -651,8 +925,15 @@ export function NotesModal({
           </View>
         )}
 
-        {/* Date form */}
-        {editingDate ? (
+        {/* Event form */}
+        {editingEvent ? (
+          <EventForm
+            initial={editingEvent}
+            onSave={handleSaveEvent}
+            onCancel={() => setEditingEvent(null)}
+            theme={theme}
+          />
+        ) : editingDate ? (
           <DateForm
             initial={editingDate}
             onSave={handleSaveDate}
@@ -693,13 +974,10 @@ export function NotesModal({
         ) : (
           /* Dates tab */
           <ScrollView contentContainerStyle={styles.list} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
+            {/* Recurring Dates section */}
+            <Text style={[styles.sectionHeader, { color: theme.textSecondary }]}>Recurring Dates</Text>
             {significantDates.length === 0 && (
-              <View style={styles.datesEmpty}>
-                <Text style={[styles.emptyTitle, { color: theme.textPrimary }]}>No dates yet</Text>
-                <Text style={[styles.emptySubtitle, { color: theme.textSecondary }]}>
-                  Add birthdays and anniversaries to get yearly reminders.
-                </Text>
-              </View>
+              <Text style={[styles.sectionEmpty, { color: theme.textSecondary }]}>No recurring dates yet</Text>
             )}
             {significantDates.map(date => (
               <DateCard
@@ -730,6 +1008,28 @@ export function NotesModal({
                   <Text style={[styles.actionButtonText, { color: theme.accent }]}>Import Birthday from Contacts</Text>
                 </>
               )}
+            </TouchableOpacity>
+
+            {/* One-Time Events section */}
+            <Text style={[styles.sectionHeader, { color: theme.textSecondary, marginTop: 24 }]}>One-Time Events</Text>
+            {oneTimeEvents.length === 0 && (
+              <Text style={[styles.sectionEmpty, { color: theme.textSecondary }]}>No upcoming events</Text>
+            )}
+            {oneTimeEvents.map(event => (
+              <EventCard
+                key={event.id}
+                event={event}
+                onEdit={() => handleOpenEditEvent(event)}
+                onDelete={() => handleDeleteEvent(event.id)}
+                theme={theme}
+              />
+            ))}
+            <TouchableOpacity
+              style={[styles.actionButton, { backgroundColor: theme.accent, marginTop: oneTimeEvents.length > 0 ? 0 : 4 }]}
+              onPress={handleOpenNewEvent}
+            >
+              <Ionicons name="add" size={18} color="#fff" />
+              <Text style={styles.actionButtonText}>Add Event</Text>
             </TouchableOpacity>
           </ScrollView>
         )}
@@ -810,6 +1110,15 @@ const styles = StyleSheet.create({
   groupRight: { flexDirection: 'row', alignItems: 'center' },
   groupName: { fontSize: 14, fontWeight: '500' },
   list: { padding: 16, gap: 10 },
+  sectionHeader: {
+    fontSize: 12,
+    fontWeight: '600',
+    letterSpacing: 0.5,
+    textTransform: 'uppercase',
+    marginBottom: 8,
+    paddingHorizontal: 2,
+  },
+  sectionEmpty: { fontSize: 14, marginBottom: 8, paddingHorizontal: 2 },
   datesEmpty: { alignItems: 'center', paddingVertical: 32, paddingHorizontal: 20 },
   noteCard: {
     borderRadius: 14,

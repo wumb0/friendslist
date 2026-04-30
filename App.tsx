@@ -4,12 +4,16 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { ThemeProvider } from './src/context/ThemeContext';
 import { HomeScreen } from './src/screens/HomeScreen';
 import { migrateGroups } from './src/utils/migrateGroups';
+import { cleanupExpiredEvents } from './src/utils/cleanupExpiredEvents';
+import { AsyncStorageFriendRepository } from './src/repository/AsyncStorageFriendRepository';
+
+const friendRepo = new AsyncStorageFriendRepository();
 
 export default function App() {
   const [ready, setReady] = useState(false);
 
   useEffect(() => {
-    migrateGroups().finally(() => setReady(true));
+    Promise.all([migrateGroups(), cleanupExpiredEvents(friendRepo)]).finally(() => setReady(true));
   }, []);
 
   if (!ready) return null;

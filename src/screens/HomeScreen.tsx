@@ -28,7 +28,7 @@ function getNoteSnippet(friend: Friend, query: string): string | undefined {
 
 export function HomeScreen() {
   const { theme } = useTheme();
-  const { friends, loading, addFriends, checkIn, addNote, updateNote, deleteNote, deleteFriend, convertCheckInToNote, moveToGroup, moveGroupMembers, renameFriend, addSignificantDate, updateSignificantDate, deleteSignificantDate } = useFriends();
+  const { friends, loading, addFriends, checkIn, addNote, updateNote, deleteNote, deleteFriend, convertCheckInToNote, moveToGroup, moveGroupMembers, renameFriend, addSignificantDate, updateSignificantDate, deleteSignificantDate, addOneTimeEvent, updateOneTimeEvent, deleteOneTimeEvent } = useFriends();
   const { groups, loading: groupsLoading, addGroup, updateGroup, deleteGroup } = useGroups(friends);
 
   const [activeGroupId, setActiveGroupId] = useState<string>('');
@@ -75,7 +75,7 @@ export function HomeScreen() {
   useEffect(() => {
     const sub = addNotificationTapListener(({ friendId, groupId }) => {
       setActiveGroupId(groupId);
-      setPendingFriendId(friendId);
+      if (friendId) setPendingFriendId(friendId);
     });
     return () => sub.remove();
   }, []);
@@ -85,7 +85,7 @@ export function HomeScreen() {
     getInitialNotificationTarget().then(target => {
       if (target) {
         setActiveGroupId(target.groupId);
-        setPendingFriendId(target.friendId);
+        if (target.friendId) setPendingFriendId(target.friendId);
       }
     });
   }, []);
@@ -262,10 +262,7 @@ export function HomeScreen() {
       <AddFriendModal
         visible={showAdd}
         onClose={() => setShowAdd(false)}
-        onAdd={(imports, groupId) => {
-          const g = groups.find(gr => gr.id === groupId);
-          addFriends(imports, groupId, g?.notificationHour, g?.notificationMinute);
-        }}
+        onAdd={(imports, groupId) => addFriends(imports, groupId)}
         existingNames={existingNames}
         groups={groups}
         defaultGroupId={activeGroupId}
@@ -283,6 +280,9 @@ export function HomeScreen() {
         onAddSignificantDate={addSignificantDate}
         onUpdateSignificantDate={updateSignificantDate}
         onDeleteSignificantDate={deleteSignificantDate}
+        onAddOneTimeEvent={addOneTimeEvent}
+        onUpdateOneTimeEvent={updateOneTimeEvent}
+        onDeleteOneTimeEvent={deleteOneTimeEvent}
       />
 
       <QuickNoteModal

@@ -1,9 +1,10 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
+import { AppState, AppStateStatus } from 'react-native';
 import { Friend } from '../types/Friend';
-import { Group, GroupFrequency } from '../types/Group';
+import { Group, Schedule } from '../types/Group';
 import { GroupRepository } from '../repository/GroupRepository';
 import { AsyncStorageGroupRepository } from '../repository/AsyncStorageGroupRepository';
-import { scheduleGroupReminders, cancelAllReminders } from '../notifications/scheduler';
+import { refreshScheduledNotifications, cancelAllReminders } from '../notifications/scheduler';
 import { useTheme } from '../context/ThemeContext';
 import { generateId } from '../utils/uuid';
 
@@ -28,12 +29,26 @@ export function useGroups(friends: Friend[]) {
     if (!settings.remindersEnabled) {
       cancelAllReminders();
     } else {
-      scheduleGroupReminders(groups, friends);
+      refreshScheduledNotifications(groups, friends, true);
     }
   }, [groups, friends, settings.remindersEnabled]);
 
-  const addGroup = async (name: string, notificationFrequency: GroupFrequency, notificationHour: number, notificationMinute: number, notificationWeekday: number, notificationDay: number, significantDatesEnabled: boolean): Promise<Group> => {
-    const group: Group = { id: generateId(), name: name.trim(), notificationFrequency, notificationHour, notificationMinute, notificationWeekday, notificationDay, significantDatesEnabled };
+  // Refresh on app foreground to pick up newly added one-time events
+  const appStateRef = useRef<AppStateStatus>(AppState.currentState);
+  useEffect(() => {
+    const sub = AppState.addEventListener('change', async nextState => {
+      if (appStateRef.current.match(/inactive|background/) && nextState === 'active') {
+        if (settings.remindersEnabled) {
+          await refreshScheduledNotifications(groups, friends, true);
+        }
+      }
+      appStateRef.current = nextState;
+    });
+    return () => sub.remove();
+  }, [groups, friends, settings.remindersEnabled]);
+
+  const addGroup = async (name: string, schedules: Schedule[], significantDatesEnabled: boolean): Promise<Group> => {
+    const group: Group = { id: generateId(), name: name.trim(), schedules, significantDatesEnabled };
     await repo.save(group);
     await reload();
     return group;

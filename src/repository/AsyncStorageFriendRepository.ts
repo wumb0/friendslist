@@ -1,5 +1,5 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { Friend, FriendNote, SignificantDate } from '../types/Friend';
+import { Friend, FriendNote, SignificantDate, OneTimeEvent } from '../types/Friend';
 import { FriendRepository } from './FriendRepository';
 import { generateId } from '../utils/uuid';
 
@@ -19,6 +19,7 @@ function migrate(raw: any): Friend {
     notes,
     checkIns: Array.isArray(raw.checkIns) ? raw.checkIns : [],
     significantDates: Array.isArray(raw.significantDates) ? raw.significantDates : [],
+    oneTimeEvents: Array.isArray(raw.oneTimeEvents) ? raw.oneTimeEvents : [],
   };
 }
 
@@ -161,6 +162,56 @@ export class AsyncStorageFriendRepository implements FriendRepository {
       friends[idx] = {
         ...friends[idx],
         significantDates: (friends[idx].significantDates ?? []).filter(d => d.id !== dateId),
+      };
+      await this.saveAll(friends);
+    }
+  }
+
+  async addOneTimeEvent(friendId: string, event: OneTimeEvent): Promise<void> {
+    const friends = await this.getAll();
+    const idx = friends.findIndex(f => f.id === friendId);
+    if (idx >= 0) {
+      friends[idx] = {
+        ...friends[idx],
+        oneTimeEvents: [...(friends[idx].oneTimeEvents ?? []), event],
+      };
+      await this.saveAll(friends);
+    }
+  }
+
+  async updateOneTimeEvent(friendId: string, eventId: string, updates: Partial<Omit<OneTimeEvent, 'id'>>): Promise<void> {
+    const friends = await this.getAll();
+    const idx = friends.findIndex(f => f.id === friendId);
+    if (idx >= 0) {
+      friends[idx] = {
+        ...friends[idx],
+        oneTimeEvents: (friends[idx].oneTimeEvents ?? []).map(e =>
+          e.id === eventId ? { ...e, ...updates } : e
+        ),
+      };
+      await this.saveAll(friends);
+    }
+  }
+
+  async deleteOneTimeEvent(friendId: string, eventId: string): Promise<void> {
+    const friends = await this.getAll();
+    const idx = friends.findIndex(f => f.id === friendId);
+    if (idx >= 0) {
+      friends[idx] = {
+        ...friends[idx],
+        oneTimeEvents: (friends[idx].oneTimeEvents ?? []).filter(e => e.id !== eventId),
+      };
+      await this.saveAll(friends);
+    }
+  }
+
+  async deleteExpiredEvents(friendId: string, eventIds: string[]): Promise<void> {
+    const friends = await this.getAll();
+    const idx = friends.findIndex(f => f.id === friendId);
+    if (idx >= 0) {
+      friends[idx] = {
+        ...friends[idx],
+        oneTimeEvents: (friends[idx].oneTimeEvents ?? []).filter(e => !eventIds.includes(e.id)),
       };
       await this.saveAll(friends);
     }

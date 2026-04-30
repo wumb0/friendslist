@@ -9,6 +9,16 @@ export interface FriendNote {
   pinned?: boolean;
 }
 
+export interface OneTimeEvent {
+  id: string;
+  label: string;
+  eventDate: number;         // midnight-local timestamp for the event day
+  notifyDaysBefore: number;  // 0 | 1 | 2 | 7
+  notifyHour: number;
+  notifyMinute: number;
+  notifyEnabled: boolean;
+}
+
 export interface Friend {
   id: string;
   name: string;
@@ -18,4 +28,5 @@ export interface Friend {
   notes: FriendNote[];
   checkIns: number[];
   significantDates?: SignificantDate[];
+  oneTimeEvents?: OneTimeEvent[];
 }

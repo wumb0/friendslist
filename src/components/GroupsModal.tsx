@@ -16,25 +16,25 @@ import DateTimePicker, { DateTimePickerEvent } from '@react-native-community/dat
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme } from '../context/ThemeContext';
-import { Group, GroupFrequency } from '../types/Group';
+import { Group, Schedule, ScheduleFrequency } from '../types/Group';
 import { Friend } from '../types/Friend';
+import { generateId } from '../utils/uuid';
 
 interface Props {
   visible: boolean;
   onClose: () => void;
   groups: Group[];
   friends: Friend[];
-  onAddGroup: (name: string, freq: GroupFrequency, hour: number, minute: number, weekday: number, day: number, significantDatesEnabled: boolean) => Promise<Group>;
+  onAddGroup: (name: string, schedules: Schedule[], significantDatesEnabled: boolean) => Promise<Group>;
   onUpdateGroup: (id: string, updates: Partial<Omit<Group, 'id'>>) => Promise<void>;
   onDeleteGroup: (id: string) => Promise<void>;
   onMoveGroupMembers: (fromGroupId: string, toGroupId: string) => Promise<void>;
 }
 
-const FREQUENCIES: { label: string; sublabel: string; value: GroupFrequency }[] = [
-  { label: 'Daily',   sublabel: 'Every day',     value: 'daily' },
-  { label: 'Weekly',  sublabel: 'Once a week',   value: 'weekly' },
-  { label: 'Monthly', sublabel: 'Once a month',  value: 'monthly' },
-  { label: 'Off',     sublabel: 'No reminders',  value: 'off' },
+const FREQUENCIES: { label: string; sublabel: string; value: ScheduleFrequency }[] = [
+  { label: 'Daily',   sublabel: 'Every day',    value: 'daily' },
+  { label: 'Weekly',  sublabel: 'Once a week',  value: 'weekly' },
+  { label: 'Monthly', sublabel: 'Once a month', value: 'monthly' },
 ];
 
 const WEEKDAYS = [
@@ -60,29 +60,36 @@ function ordinal(n: number): string {
   return n + (s[(v - 20) % 10] ?? s[v] ?? s[0]);
 }
 
-function scheduleDescription(group: Group): string {
-  if (group.notificationFrequency === 'off') return 'Off';
-  const time = formatTime(group.notificationHour, group.notificationMinute);
-  if (group.notificationFrequency === 'daily') return `Daily · ${time}`;
-  if (group.notificationFrequency === 'weekly') {
-    const day = WEEKDAYS.find(d => d.value === (group.notificationWeekday ?? 2))?.label ?? 'Mon';
-    return `Weekly · ${day} · ${time}`;
+function scheduleLabel(s: Schedule): string {
+  const t = formatTime(s.hour, s.minute);
+  if (s.frequency === 'daily') return `Daily · ${t}`;
+  if (s.frequency === 'weekly') {
+    const day = WEEKDAYS.find(d => d.value === (s.weekday ?? 2))?.label ?? 'Mon';
+    return `Weekly · ${day} · ${t}`;
   }
-  if (group.notificationFrequency === 'monthly') {
-    return `Monthly · ${ordinal(group.notificationDay ?? 1)} · ${time}`;
-  }
-  return '';
+  return `Monthly · ${ordinal(s.day ?? 1)} · ${t}`;
+}
+
+function scheduleSummary(group: Group): string {
+  if (group.schedules.length === 0) return 'Off';
+  if (group.schedules.length === 1) return scheduleLabel(group.schedules[0]);
+  return `${group.schedules.length} schedules`;
 }
 
 type EditState = {
   id: string | null;
   name: string;
-  notificationFrequency: GroupFrequency;
-  notificationHour: number;
-  notificationMinute: number;
-  notificationWeekday: number;
-  notificationDay: number;
+  schedules: Schedule[];
   significantDatesEnabled: boolean;
+};
+
+type ScheduleEditorState = {
+  scheduleId: string | null;
+  frequency: ScheduleFrequency;
+  hour: number;
+  minute: number;
+  weekday: number;
+  day: number;
 };
 
 export function GroupsModal({ visible, onClose, groups, friends, onAddGroup, onUpdateGroup, onDeleteGroup, onMoveGroupMembers }: Props) {
@@ -91,28 +98,66 @@ export function GroupsModal({ visible, onClose, groups, friends, onAddGroup, onU
   const topPadding = Platform.OS === 'ios' ? insets.top + 14 : (StatusBar.currentHeight ?? 0) + 14;
 
   const [editing, setEditing] = useState<EditState | null>(null);
+  const [scheduleEditor, setScheduleEditor] = useState<ScheduleEditorState | null>(null);
   const [showTimePicker, setShowTimePicker] = useState(false);
 
   const openNew = () => {
-    setEditing({ id: null, name: '', notificationFrequency: 'weekly', notificationHour: 9, notificationMinute: 0, notificationWeekday: 2, notificationDay: 1, significantDatesEnabled: true });
+    setEditing({ id: null, name: '', schedules: [], significantDatesEnabled: true });
+    setScheduleEditor(null);
     setShowTimePicker(false);
   };
 
   const openEdit = (group: Group) => {
-    setEditing({
-      id: group.id,
-      name: group.name,
-      notificationFrequency: group.notificationFrequency,
-      notificationHour: group.notificationHour,
-      notificationMinute: group.notificationMinute,
-      notificationWeekday: group.notificationWeekday ?? 2,
-      notificationDay: group.notificationDay ?? 1,
-      significantDatesEnabled: group.significantDatesEnabled,
-    });
+    setEditing({ id: group.id, name: group.name, schedules: [...group.schedules], significantDatesEnabled: group.significantDatesEnabled });
+    setScheduleEditor(null);
     setShowTimePicker(false);
   };
 
-  const handleBack = () => { setEditing(null); setShowTimePicker(false); };
+  const openNewSchedule = () => {
+    setScheduleEditor({ scheduleId: null, frequency: 'weekly', hour: 9, minute: 0, weekday: 2, day: 1 });
+    setShowTimePicker(false);
+  };
+
+  const openEditSchedule = (s: Schedule) => {
+    setScheduleEditor({ scheduleId: s.id, frequency: s.frequency, hour: s.hour, minute: s.minute, weekday: s.weekday ?? 2, day: s.day ?? 1 });
+    setShowTimePicker(false);
+  };
+
+  const handleSaveSchedule = () => {
+    if (!scheduleEditor || !editing) return;
+    const s: Schedule = {
+      id: scheduleEditor.scheduleId ?? generateId(),
+      frequency: scheduleEditor.frequency,
+      hour: scheduleEditor.hour,
+      minute: scheduleEditor.minute,
+      weekday: scheduleEditor.frequency === 'weekly' ? scheduleEditor.weekday : undefined,
+      day: scheduleEditor.frequency === 'monthly' ? scheduleEditor.day : undefined,
+    };
+    setEditing(e => {
+      if (!e) return e;
+      const idx = e.schedules.findIndex(x => x.id === s.id);
+      const schedules = idx >= 0
+        ? e.schedules.map((x, i) => i === idx ? s : x)
+        : [...e.schedules, s];
+      return { ...e, schedules };
+    });
+    setScheduleEditor(null);
+    setShowTimePicker(false);
+  };
+
+  const handleDeleteSchedule = (scheduleId: string) => {
+    setEditing(e => e ? { ...e, schedules: e.schedules.filter(s => s.id !== scheduleId) } : e);
+  };
+
+  const handleBack = () => {
+    if (scheduleEditor) {
+      setScheduleEditor(null);
+      setShowTimePicker(false);
+    } else {
+      setEditing(null);
+      setShowTimePicker(false);
+    }
+  };
 
   const handleSave = async () => {
     if (!editing) return;
@@ -121,15 +166,11 @@ export function GroupsModal({ visible, onClose, groups, friends, onAddGroup, onU
     if (editing.id) {
       await onUpdateGroup(editing.id, {
         name,
-        notificationFrequency: editing.notificationFrequency,
-        notificationHour: editing.notificationHour,
-        notificationMinute: editing.notificationMinute,
-        notificationWeekday: editing.notificationWeekday,
-        notificationDay: editing.notificationDay,
+        schedules: editing.schedules,
         significantDatesEnabled: editing.significantDatesEnabled,
       });
     } else {
-      await onAddGroup(name, editing.notificationFrequency, editing.notificationHour, editing.notificationMinute, editing.notificationWeekday, editing.notificationDay, editing.significantDatesEnabled);
+      await onAddGroup(name, editing.schedules, editing.significantDatesEnabled);
     }
     setEditing(null);
   };
@@ -172,20 +213,26 @@ export function GroupsModal({ visible, onClose, groups, friends, onAddGroup, onU
 
   const handleTimeChange = (_event: DateTimePickerEvent, date?: Date) => {
     if (Platform.OS === 'android') setShowTimePicker(false);
-    if (date && editing) {
-      setEditing(e => e ? { ...e, notificationHour: date.getHours(), notificationMinute: date.getMinutes() } : e);
+    if (date && scheduleEditor) {
+      setScheduleEditor(e => e ? { ...e, hour: date.getHours(), minute: date.getMinutes() } : e);
     }
   };
 
-  const handleClose = () => { setEditing(null); setShowTimePicker(false); onClose(); };
+  const handleClose = () => { setEditing(null); setScheduleEditor(null); setShowTimePicker(false); onClose(); };
 
-  const pickerDate = editing ? new Date(new Date().setHours(editing.notificationHour, editing.notificationMinute, 0, 0)) : new Date();
+  const pickerDate = scheduleEditor
+    ? new Date(new Date().setHours(scheduleEditor.hour, scheduleEditor.minute, 0, 0))
+    : new Date();
+
+  const isScheduleEditing = scheduleEditor !== null;
+  const isGroupEditing = editing !== null;
 
   return (
-    <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={editing ? handleBack : handleClose}>
+    <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={isScheduleEditing ? () => { setScheduleEditor(null); setShowTimePicker(false); } : isGroupEditing ? handleBack : handleClose}>
       <View style={[styles.container, { backgroundColor: theme.background }]}>
+        {/* Header */}
         <View style={[styles.header, { backgroundColor: theme.header, borderBottomColor: theme.border, paddingTop: topPadding }]}>
-          {editing ? (
+          {isScheduleEditing || isGroupEditing ? (
             <TouchableOpacity onPress={handleBack} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
               <Text style={[styles.headerAction, { color: theme.accent }]}>Back</Text>
             </TouchableOpacity>
@@ -193,9 +240,19 @@ export function GroupsModal({ visible, onClose, groups, friends, onAddGroup, onU
             <View style={{ width: 60 }} />
           )}
           <Text style={[styles.title, { color: theme.textPrimary }]}>
-            {editing ? (editing.id ? 'Edit Group' : 'New Group') : 'Groups'}
+            {isScheduleEditing
+              ? (scheduleEditor.scheduleId ? 'Edit Schedule' : 'New Schedule')
+              : isGroupEditing
+              ? (editing.id ? 'Edit Group' : 'New Group')
+              : 'Groups & Schedules'}
           </Text>
-          {editing ? (
+          {isScheduleEditing ? (
+            <TouchableOpacity onPress={handleSaveSchedule} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+              <Text style={[styles.headerAction, { color: theme.accent, textAlign: 'right' }]}>
+                {scheduleEditor.scheduleId ? 'Save' : 'Add'}
+              </Text>
+            </TouchableOpacity>
+          ) : isGroupEditing ? (
             <TouchableOpacity onPress={handleSave} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }} disabled={!editing.name.trim()}>
               <Text style={[styles.headerAction, { color: editing.name.trim() ? theme.accent : theme.textSecondary, textAlign: 'right' }]}>Save</Text>
             </TouchableOpacity>
@@ -214,7 +271,114 @@ export function GroupsModal({ visible, onClose, groups, friends, onAddGroup, onU
           </View>
         )}
 
-        {editing ? (
+        {/* Schedule sub-editor */}
+        {isScheduleEditing && scheduleEditor && (
+          <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={{ paddingBottom: 40 }}>
+            {/* Frequency */}
+            <Text style={[styles.sectionHeader, { color: theme.textSecondary }]}>Frequency</Text>
+            <View style={[styles.card, { backgroundColor: theme.card }]}>
+              {FREQUENCIES.map((f, i) => (
+                <View key={f.value}>
+                  <TouchableOpacity
+                    style={styles.freqRow}
+                    onPress={() => setScheduleEditor(e => e ? { ...e, frequency: f.value } : e)}
+                  >
+                    <View style={styles.freqLabels}>
+                      <Text style={[styles.rowLabel, { color: theme.textPrimary }]}>{f.label}</Text>
+                      <Text style={[styles.sublabel, { color: theme.textSecondary }]}>{f.sublabel}</Text>
+                    </View>
+                    {scheduleEditor.frequency === f.value && (
+                      <Text style={[styles.selectedCheck, { color: theme.accent }]}>✓</Text>
+                    )}
+                  </TouchableOpacity>
+                  {i < FREQUENCIES.length - 1 && (
+                    <View style={[styles.separator, { backgroundColor: theme.border }]} />
+                  )}
+                </View>
+              ))}
+            </View>
+
+            {/* Day of week */}
+            {scheduleEditor.frequency === 'weekly' && (
+              <>
+                <Text style={[styles.sectionHeader, { color: theme.textSecondary }]}>Day of Week</Text>
+                <View style={[styles.card, { backgroundColor: theme.card }]}>
+                  <View style={styles.weekdayRow}>
+                    {WEEKDAYS.map(d => {
+                      const active = scheduleEditor.weekday === d.value;
+                      return (
+                        <TouchableOpacity
+                          key={d.value}
+                          style={[styles.weekdayBtn, { borderColor: theme.border, backgroundColor: active ? theme.accent : theme.background }]}
+                          onPress={() => setScheduleEditor(e => e ? { ...e, weekday: d.value } : e)}
+                        >
+                          <Text style={[styles.weekdayBtnText, { color: active ? '#fff' : theme.textPrimary }]}>
+                            {d.label}
+                          </Text>
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </View>
+                </View>
+              </>
+            )}
+
+            {/* Day of month */}
+            {scheduleEditor.frequency === 'monthly' && (
+              <>
+                <Text style={[styles.sectionHeader, { color: theme.textSecondary }]}>Day of Month</Text>
+                <View style={[styles.card, { backgroundColor: theme.card }]}>
+                  <View style={styles.stepperRow}>
+                    <TouchableOpacity
+                      onPress={() => setScheduleEditor(e => e ? { ...e, day: Math.max(1, e.day - 1) } : e)}
+                      hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+                    >
+                      <Text style={[styles.stepperBtn, { color: theme.accent }]}>−</Text>
+                    </TouchableOpacity>
+                    <Text style={[styles.stepperValue, { color: theme.textPrimary }]}>
+                      {ordinal(scheduleEditor.day)}
+                    </Text>
+                    <TouchableOpacity
+                      onPress={() => setScheduleEditor(e => e ? { ...e, day: Math.min(28, e.day + 1) } : e)}
+                      hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+                    >
+                      <Text style={[styles.stepperBtn, { color: theme.accent }]}>+</Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              </>
+            )}
+
+            {/* Time */}
+            <Text style={[styles.sectionHeader, { color: theme.textSecondary }]}>Reminder Time</Text>
+            <View style={[styles.card, { backgroundColor: theme.card }]}>
+              <TouchableOpacity style={styles.row} onPress={() => setShowTimePicker(true)}>
+                <Text style={[styles.rowLabel, { color: theme.textPrimary }]}>Time</Text>
+                <Text style={[styles.timeValue, { color: theme.accent }]}>
+                  {formatTime(scheduleEditor.hour, scheduleEditor.minute)}
+                </Text>
+              </TouchableOpacity>
+              {showTimePicker && Platform.OS === 'ios' && (
+                <DateTimePicker
+                  value={pickerDate}
+                  mode="time"
+                  display="spinner"
+                  onChange={handleTimeChange}
+                  textColor={theme.textPrimary}
+                  themeVariant={theme.isDark ? 'dark' : 'light'}
+                  style={styles.iosPicker}
+                />
+              )}
+            </View>
+
+            {showTimePicker && Platform.OS === 'android' && (
+              <DateTimePicker value={pickerDate} mode="time" display="default" onChange={handleTimeChange} textColor={theme.textPrimary} themeVariant={theme.isDark ? 'dark' : 'light'} />
+            )}
+          </ScrollView>
+        )}
+
+        {/* Group edit view */}
+        {!isScheduleEditing && isGroupEditing && editing && (
           <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={{ paddingBottom: 40 }}>
             {/* Name */}
             <Text style={[styles.sectionHeader, { color: theme.textSecondary }]}>Name</Text>
@@ -230,106 +394,38 @@ export function GroupsModal({ visible, onClose, groups, friends, onAddGroup, onU
               />
             </View>
 
-            {/* Frequency */}
-            <Text style={[styles.sectionHeader, { color: theme.textSecondary }]}>Reminders</Text>
+            {/* Schedules list */}
+            <Text style={[styles.sectionHeader, { color: theme.textSecondary }]}>Schedules</Text>
             <View style={[styles.card, { backgroundColor: theme.card }]}>
-              {FREQUENCIES.map((f, i) => (
-                <View key={f.value}>
-                  <TouchableOpacity
-                    style={styles.freqRow}
-                    onPress={() => setEditing(e => e ? { ...e, notificationFrequency: f.value } : e)}
-                  >
-                    <View style={styles.freqLabels}>
-                      <Text style={[styles.rowLabel, { color: theme.textPrimary }]}>{f.label}</Text>
-                      <Text style={[styles.sublabel, { color: theme.textSecondary }]}>{f.sublabel}</Text>
-                    </View>
-                    {editing.notificationFrequency === f.value && (
-                      <Text style={[styles.selectedCheck, { color: theme.accent }]}>✓</Text>
+              {editing.schedules.length === 0 ? (
+                <View style={styles.row}>
+                  <Text style={[styles.sublabel, { color: theme.textSecondary }]}>No reminders — add a schedule below</Text>
+                </View>
+              ) : (
+                editing.schedules.map((s, i) => (
+                  <View key={s.id}>
+                    <TouchableOpacity style={styles.scheduleRow} onPress={() => openEditSchedule(s)}>
+                      <Text style={[styles.rowLabel, { color: theme.textPrimary, flex: 1 }]}>{scheduleLabel(s)}</Text>
+                      <TouchableOpacity
+                        onPress={() => handleDeleteSchedule(s.id)}
+                        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                      >
+                        <Ionicons name="trash-outline" size={18} color={theme.danger} />
+                      </TouchableOpacity>
+                    </TouchableOpacity>
+                    {i < editing.schedules.length - 1 && (
+                      <View style={[styles.separator, { backgroundColor: theme.border }]} />
                     )}
-                  </TouchableOpacity>
-                  {i < FREQUENCIES.length - 1 && (
-                    <View style={[styles.separator, { backgroundColor: theme.border }]} />
-                  )}
-                </View>
-              ))}
+                  </View>
+                ))
+              )}
+              {editing.schedules.length > 0 && (
+                <View style={[styles.separator, { backgroundColor: theme.border }]} />
+              )}
+              <TouchableOpacity style={styles.row} onPress={openNewSchedule}>
+                <Text style={[styles.rowLabel, { color: theme.accent }]}>Add Schedule</Text>
+              </TouchableOpacity>
             </View>
-
-            {/* Day of week */}
-            {editing.notificationFrequency === 'weekly' && (
-              <>
-                <Text style={[styles.sectionHeader, { color: theme.textSecondary }]}>Day of Week</Text>
-                <View style={[styles.card, { backgroundColor: theme.card }]}>
-                  <View style={styles.weekdayRow}>
-                    {WEEKDAYS.map(d => {
-                      const active = editing.notificationWeekday === d.value;
-                      return (
-                        <TouchableOpacity
-                          key={d.value}
-                          style={[styles.weekdayBtn, { borderColor: theme.border, backgroundColor: active ? theme.accent : theme.background }]}
-                          onPress={() => setEditing(e => e ? { ...e, notificationWeekday: d.value } : e)}
-                        >
-                          <Text style={[styles.weekdayBtnText, { color: active ? '#fff' : theme.textPrimary }]}>
-                            {d.label}
-                          </Text>
-                        </TouchableOpacity>
-                      );
-                    })}
-                  </View>
-                </View>
-              </>
-            )}
-
-            {/* Day of month */}
-            {editing.notificationFrequency === 'monthly' && (
-              <>
-                <Text style={[styles.sectionHeader, { color: theme.textSecondary }]}>Day of Month</Text>
-                <View style={[styles.card, { backgroundColor: theme.card }]}>
-                  <View style={styles.stepperRow}>
-                    <TouchableOpacity
-                      onPress={() => setEditing(e => e ? { ...e, notificationDay: Math.max(1, e.notificationDay - 1) } : e)}
-                      hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
-                    >
-                      <Text style={[styles.stepperBtn, { color: theme.accent }]}>−</Text>
-                    </TouchableOpacity>
-                    <Text style={[styles.stepperValue, { color: theme.textPrimary }]}>
-                      {ordinal(editing.notificationDay)}
-                    </Text>
-                    <TouchableOpacity
-                      onPress={() => setEditing(e => e ? { ...e, notificationDay: Math.min(28, e.notificationDay + 1) } : e)}
-                      hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
-                    >
-                      <Text style={[styles.stepperBtn, { color: theme.accent }]}>+</Text>
-                    </TouchableOpacity>
-                  </View>
-                </View>
-              </>
-            )}
-
-            {/* Time */}
-            {editing.notificationFrequency !== 'off' && (
-              <>
-                <Text style={[styles.sectionHeader, { color: theme.textSecondary }]}>Reminder Time</Text>
-                <View style={[styles.card, { backgroundColor: theme.card }]}>
-                  <TouchableOpacity style={styles.row} onPress={() => setShowTimePicker(true)}>
-                    <Text style={[styles.rowLabel, { color: theme.textPrimary }]}>Time</Text>
-                    <Text style={[styles.timeValue, { color: theme.accent }]}>
-                      {formatTime(editing.notificationHour, editing.notificationMinute)}
-                    </Text>
-                  </TouchableOpacity>
-                  {showTimePicker && Platform.OS === 'ios' && (
-                    <DateTimePicker
-                      value={pickerDate}
-                      mode="time"
-                      display="spinner"
-                      onChange={handleTimeChange}
-                      textColor={theme.textPrimary}
-                      themeVariant={theme.isDark ? 'dark' : 'light'}
-                      style={styles.iosPicker}
-                    />
-                  )}
-                </View>
-              </>
-            )}
 
             {/* Significant dates */}
             <Text style={[styles.sectionHeader, { color: theme.textSecondary }]}>Significant Dates</Text>
@@ -358,12 +454,11 @@ export function GroupsModal({ visible, onClose, groups, friends, onAddGroup, onU
                 </View>
               </>
             )}
-
-            {showTimePicker && Platform.OS === 'android' && (
-              <DateTimePicker value={pickerDate} mode="time" display="default" onChange={handleTimeChange} textColor={theme.textPrimary} themeVariant={theme.isDark ? 'dark' : 'light'} />
-            )}
           </ScrollView>
-        ) : (
+        )}
+
+        {/* Groups list */}
+        {!isScheduleEditing && !isGroupEditing && (
           <ScrollView>
             <Text style={[styles.sectionHeader, { color: theme.textSecondary }]}>My Groups</Text>
             <View style={[styles.card, { backgroundColor: theme.card }]}>
@@ -375,7 +470,7 @@ export function GroupsModal({ visible, onClose, groups, friends, onAddGroup, onU
                       <View style={styles.groupInfo}>
                         <Text style={[styles.groupName, { color: theme.textPrimary }]}>{group.name}</Text>
                         <Text style={[styles.groupMeta, { color: theme.textSecondary }]}>
-                          {count} {count === 1 ? 'person' : 'people'} · {scheduleDescription(group)}
+                          {count} {count === 1 ? 'person' : 'people'} · {scheduleSummary(group)}
                         </Text>
                       </View>
                       <Ionicons name="chevron-forward" size={18} color={theme.textSecondary} />
@@ -441,6 +536,13 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 14,
   },
+  scheduleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    gap: 12,
+  },
   rowLabel: { fontSize: 16 },
   nameInput: { paddingHorizontal: 16, paddingVertical: 14, fontSize: 16 },
   freqRow: {
@@ -488,5 +590,4 @@ const styles = StyleSheet.create({
   groupInfo: { flex: 1 },
   groupName: { fontSize: 16 },
   groupMeta: { fontSize: 13, marginTop: 2 },
-  danger: { color: '#FF3B30' },
 });

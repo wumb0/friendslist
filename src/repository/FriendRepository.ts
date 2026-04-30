@@ -1,4 +1,4 @@
-import { Friend, FriendNote, SignificantDate } from '../types/Friend';
+import { Friend, FriendNote, SignificantDate, OneTimeEvent } from '../types/Friend';
 
 export interface FriendRepository {
   getAll(): Promise<Friend[]>;
@@ -12,4 +12,8 @@ export interface FriendRepository {
   addSignificantDate(friendId: string, date: SignificantDate): Promise<void>;
   updateSignificantDate(friendId: string, dateId: string, updates: Partial<Omit<SignificantDate, 'id'>>): Promise<void>;
   deleteSignificantDate(friendId: string, dateId: string): Promise<void>;
+  addOneTimeEvent(friendId: string, event: OneTimeEvent): Promise<void>;
+  updateOneTimeEvent(friendId: string, eventId: string, updates: Partial<Omit<OneTimeEvent, 'id'>>): Promise<void>;
+  deleteOneTimeEvent(friendId: string, eventId: string): Promise<void>;
+  deleteExpiredEvents(friendId: string, eventIds: string[]): Promise<void>;
 }

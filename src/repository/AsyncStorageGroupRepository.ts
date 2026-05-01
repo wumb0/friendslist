@@ -8,7 +8,12 @@ export class AsyncStorageGroupRepository implements GroupRepository {
   async getAll(): Promise<Group[]> {
     const json = await AsyncStorage.getItem(STORAGE_KEY);
     if (!json) return [];
-    return JSON.parse(json) as Group[];
+    const raw = JSON.parse(json) as any[];
+    return raw.map(g => ({
+      ...g,
+      schedules: Array.isArray(g.schedules) ? g.schedules : [],
+      significantDatesEnabled: g.significantDatesEnabled ?? true,
+    })) as Group[];
   }
 
   private async saveAll(groups: Group[]): Promise<void> {

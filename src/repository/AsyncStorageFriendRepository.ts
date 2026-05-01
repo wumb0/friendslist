@@ -9,7 +9,12 @@ export class AsyncStorageFriendRepository implements FriendRepository {
   async getAll(): Promise<Friend[]> {
     const json = await AsyncStorage.getItem(STORAGE_KEY);
     if (!json) return [];
-    return JSON.parse(json) as Friend[];
+    const raw = JSON.parse(json) as any[];
+    return raw.map(f => ({
+      ...f,
+      significantDates: Array.isArray(f.significantDates) ? f.significantDates : [],
+      oneTimeEvents: Array.isArray(f.oneTimeEvents) ? f.oneTimeEvents : [],
+    })) as Friend[];
   }
 
   private async saveAll(friends: Friend[]): Promise<void> {

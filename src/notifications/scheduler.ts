@@ -1,5 +1,5 @@
 import * as Notifications from 'expo-notifications';
-import { Group } from '../types/Group';
+import { Group, Schedule } from '../types/Group';
 import { Friend } from '../types/Friend';
 import { sortFriends } from '../utils/sortFriends';
 
@@ -20,6 +20,36 @@ export async function requestNotificationPermissions(): Promise<boolean> {
   } catch {
     return false;
   }
+}
+
+// Returns the most recent past fire time for a non-daily schedule, or null for daily.
+function getLastFireTime(schedule: Schedule, now: Date): Date | null {
+  if (schedule.frequency === 'daily') return null;
+
+  const candidate = new Date(now);
+
+  if (schedule.frequency === 'weekly') {
+    const schedDow = (schedule.weekday ?? 2) - 1; // 1=Sun…7=Sat → 0=Sun…6=Sat
+    const daysBack = (now.getDay() - schedDow + 7) % 7;
+    candidate.setDate(candidate.getDate() - daysBack);
+    candidate.setHours(schedule.hour, schedule.minute, 0, 0);
+    if (candidate >= now) candidate.setDate(candidate.getDate() - 7);
+    return candidate;
+  }
+
+  if (schedule.frequency === 'monthly') {
+    const day = schedule.day ?? 1;
+    candidate.setDate(day);
+    candidate.setHours(schedule.hour, schedule.minute, 0, 0);
+    if (candidate >= now) {
+      candidate.setMonth(candidate.getMonth() - 1);
+      candidate.setDate(day);
+      candidate.setHours(schedule.hour, schedule.minute, 0, 0);
+    }
+    return candidate;
+  }
+
+  return null;
 }
 
 function eventWhenString(notifyDaysBefore: number): string {
@@ -115,6 +145,36 @@ export async function refreshScheduledNotifications(groups: Group[], friends: Fr
           trigger: {
             type: Notifications.SchedulableTriggerInputTypes.DATE,
             date: fireTime,
+          },
+        });
+      }
+    }
+
+    // Pass 4 — missed check-in follow-ups (weekly and monthly schedules only)
+    // Cancellation is automatic: refreshScheduledNotifications is called on every check-in,
+    // so if the user checked in after the last fire time this pass simply skips scheduling.
+    for (const group of groups) {
+      const groupFriends = sortFriends(friends.filter(f => f.groupId === group.id));
+      if (groupFriends.length === 0) continue;
+      for (const schedule of group.schedules) {
+        const lastFireTime = getLastFireTime(schedule, now);
+        if (!lastFireTime) continue;
+        const followUpTime = new Date(lastFireTime.getTime() + 24 * 60 * 60 * 1000);
+        if (followUpTime <= now) continue; // window has passed
+        const anyCheckedIn = groupFriends.some(
+          f => f.lastCheckedIn !== null && f.lastCheckedIn > lastFireTime.getTime(),
+        );
+        if (anyCheckedIn) continue;
+        const topFriend = groupFriends[0];
+        await Notifications.scheduleNotificationAsync({
+          content: {
+            title: 'Still haven\'t reached out',
+            body: `${topFriend.name} is still waiting to hear from you.`,
+            data: { groupId: group.id, friendId: topFriend.id },
+          },
+          trigger: {
+            type: Notifications.SchedulableTriggerInputTypes.DATE,
+            date: followUpTime,
           },
         });
       }

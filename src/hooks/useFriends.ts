@@ -4,6 +4,7 @@ import { FriendRepository } from '../repository/FriendRepository';
 import { AsyncStorageFriendRepository } from '../repository/AsyncStorageFriendRepository';
 import { sortFriends } from '../utils/sortFriends';
 import { generateId } from '../utils/uuid';
+import { dismissNotificationsForFriend } from '../notifications/scheduler';
 
 const repo: FriendRepository = new AsyncStorageFriendRepository();
 
@@ -39,6 +40,7 @@ export function useFriends() {
   const checkIn = async (id: string): Promise<void> => {
     await repo.checkIn(id, Date.now());
     await reload();
+    dismissNotificationsForFriend(id);
   };
 
   const addNote = async (friendId: string, content: string): Promise<void> => {

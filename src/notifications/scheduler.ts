@@ -224,3 +224,17 @@ export async function cancelAllReminders(): Promise<void> {
     // no-op
   }
 }
+
+export async function dismissNotificationsForFriend(friendId: string): Promise<void> {
+  try {
+    const presented = await Notifications.getPresentedNotificationsAsync();
+    for (const notification of presented) {
+      const data = notification.request.content.data as Record<string, unknown>;
+      if (data.friendId === friendId) {
+        await Notifications.dismissNotificationAsync(notification.request.identifier);
+      }
+    }
+  } catch {
+    // no-op
+  }
+}

@@ -13,7 +13,8 @@
       "backgroundColor": "#ffffff"
     },
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "bundleIdentifier": "in.wumb0.friendslist"
     },
     "notification": {
       "icon": "./assets/notification-icon.png",

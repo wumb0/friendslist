@@ -296,7 +296,7 @@ export function HomeScreen() {
       <SettingsModal
         visible={showSettings}
         onClose={() => setShowSettings(false)}
-        onOpenGroups={() => { setShowGroups(true); }}
+        onOpenGroups={() => { setShowSettings(false); setTimeout(() => setShowGroups(true), 400); }}
       />
 
       <GroupsModal

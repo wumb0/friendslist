@@ -21,7 +21,15 @@ export function useGroups(friends: Friend[]) {
     return all;
   }, []);
 
-  useEffect(() => { reload().finally(() => setLoading(false)); }, [reload]);
+  useEffect(() => {
+    reload().then(async (all) => {
+      if (all.length === 0) {
+        const defaultGroup: Group = { id: generateId(), name: 'Friends', schedules: [], significantDatesEnabled: true };
+        await repo.save(defaultGroup);
+        await reload();
+      }
+    }).finally(() => setLoading(false));
+  }, [reload]);
 
   const isFirstRender = useRef(true);
   useEffect(() => {

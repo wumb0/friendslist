@@ -1,4 +1,5 @@
 #!/bin/bash
+pushd ..
 npx expo prebuild --platform android
-cd android
+popd
 ./gradlew assembleRelease

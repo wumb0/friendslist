@@ -9,6 +9,8 @@ export interface FriendRepository {
   updateNote(friendId: string, noteId: string, updates: Partial<Pick<FriendNote, 'content' | 'pinned'>>): Promise<void>;
   deleteNote(friendId: string, noteId: string): Promise<void>;
   convertCheckInToNote(friendId: string, checkInTs: number, content: string): Promise<void>;
+  updateCheckInDate(friendId: string, oldTs: number, newTs: number): Promise<void>;
+  updateNoteDate(friendId: string, noteId: string, newCreatedAt: number): Promise<void>;
   addSignificantDate(friendId: string, date: SignificantDate): Promise<void>;
   updateSignificantDate(friendId: string, dateId: string, updates: Partial<Omit<SignificantDate, 'id'>>): Promise<void>;
   deleteSignificantDate(friendId: string, dateId: string): Promise<void>;

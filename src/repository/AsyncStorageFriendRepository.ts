@@ -116,6 +116,39 @@ export class AsyncStorageFriendRepository implements FriendRepository {
     }
   }
 
+  async updateCheckInDate(friendId: string, oldTs: number, newTs: number): Promise<void> {
+    const friends = await this.getAll();
+    const idx = friends.findIndex(f => f.id === friendId);
+    if (idx < 0) return;
+    const friend = friends[idx];
+    const newDate = new Date(newTs);
+    const newDayAlreadyHasCheckIn = friend.checkIns.some(ci => {
+      if (ci === oldTs) return false;
+      const c = new Date(ci);
+      return c.getFullYear() === newDate.getFullYear() && c.getMonth() === newDate.getMonth() && c.getDate() === newDate.getDate();
+    });
+    const updatedCheckIns = [
+      ...friend.checkIns.filter(ci => ci !== oldTs),
+      ...(newDayAlreadyHasCheckIn ? [] : [newTs]),
+    ];
+    const allTs = [...updatedCheckIns, ...friend.notes.map(n => n.createdAt)];
+    const lastCheckedIn = allTs.length > 0 ? Math.max(...allTs) : null;
+    friends[idx] = { ...friend, checkIns: updatedCheckIns, lastCheckedIn };
+    await this.saveAll(friends);
+  }
+
+  async updateNoteDate(friendId: string, noteId: string, newCreatedAt: number): Promise<void> {
+    const friends = await this.getAll();
+    const idx = friends.findIndex(f => f.id === friendId);
+    if (idx < 0) return;
+    const friend = friends[idx];
+    const updatedNotes = friend.notes.map(n => n.id === noteId ? { ...n, createdAt: newCreatedAt } : n);
+    const allTs = [...friend.checkIns, ...updatedNotes.map(n => n.createdAt)];
+    const lastCheckedIn = allTs.length > 0 ? Math.max(...allTs) : null;
+    friends[idx] = { ...friend, notes: updatedNotes, lastCheckedIn };
+    await this.saveAll(friends);
+  }
+
   async addSignificantDate(friendId: string, date: SignificantDate): Promise<void> {
     const friends = await this.getAll();
     const idx = friends.findIndex(f => f.id === friendId);

@@ -12,8 +12,10 @@ import {
   Platform,
   StatusBar,
   Alert,
+  ActionSheetIOS,
   ActivityIndicator,
 } from 'react-native';
+import DateTimePicker, { DateTimePickerEvent } from '@react-native-community/datetimepicker';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Contacts from 'expo-contacts';
@@ -30,6 +32,8 @@ interface Props {
   onUpdateNote: (friendId: string, noteId: string, updates: Partial<Pick<FriendNote, 'content' | 'pinned'>>) => void;
   onDeleteNote: (friendId: string, noteId: string) => void;
   onConvertCheckIn: (friendId: string, checkInTs: number, content: string) => void;
+  onUpdateCheckInDate: (friendId: string, oldTs: number, newTs: number) => void;
+  onUpdateNoteDate: (friendId: string, noteId: string, newCreatedAt: number) => void;
   groups: Group[];
   onMoveGroup: (friendId: string, groupId: string) => void;
   onAddSignificantDate: (friendId: string, data: Omit<SignificantDate, 'id'>) => void;
@@ -65,17 +69,109 @@ function formatDate(ts: number): string {
   });
 }
 
+function formatTime(ts: number): string {
+  return new Date(ts).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+}
+
+function DateTimeEditor({ initial, onSave, onCancel, theme }: {
+  initial: Date;
+  onSave: (date: Date) => void;
+  onCancel: () => void;
+  theme: ReturnType<typeof useTheme>['theme'];
+}) {
+  const [pending, setPending] = useState(new Date(initial));
+  const [showDatePicker, setShowDatePicker] = useState(false);
+  const [showTimePicker, setShowTimePicker] = useState(false);
+
+  const handleDateChange = (_: DateTimePickerEvent, date?: Date) => {
+    if (Platform.OS === 'android') setShowDatePicker(false);
+    if (date) setPending(prev => {
+      const next = new Date(prev);
+      next.setFullYear(date.getFullYear(), date.getMonth(), date.getDate());
+      return next;
+    });
+  };
+
+  const handleTimeChange = (_: DateTimePickerEvent, date?: Date) => {
+    if (Platform.OS === 'android') setShowTimePicker(false);
+    if (date) setPending(prev => {
+      const next = new Date(prev);
+      next.setHours(date.getHours(), date.getMinutes(), 0, 0);
+      return next;
+    });
+  };
+
+  return (
+    <View style={dtStyles.container}>
+      <View style={dtStyles.row}>
+        <TouchableOpacity
+          style={[dtStyles.pill, { backgroundColor: theme.input, borderColor: theme.border }]}
+          onPress={() => { setShowDatePicker(v => !v); setShowTimePicker(false); }}
+        >
+          <Text style={[dtStyles.pillText, { color: theme.textPrimary }]}>{formatDate(pending.getTime())}</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={[dtStyles.pill, { backgroundColor: theme.input, borderColor: theme.border }]}
+          onPress={() => { setShowTimePicker(v => !v); setShowDatePicker(false); }}
+        >
+          <Text style={[dtStyles.pillText, { color: theme.textPrimary }]}>{formatTime(pending.getTime())}</Text>
+        </TouchableOpacity>
+      </View>
+
+      {showDatePicker && (
+        <DateTimePicker
+          value={pending}
+          mode="date"
+          display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+          onChange={handleDateChange}
+          maximumDate={new Date()}
+        />
+      )}
+      {showTimePicker && (
+        <DateTimePicker
+          value={pending}
+          mode="time"
+          display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+          onChange={handleTimeChange}
+        />
+      )}
+
+      <View style={dtStyles.buttons}>
+        <TouchableOpacity onPress={onCancel} style={[dtStyles.btn, { borderColor: theme.border }]}>
+          <Text style={[dtStyles.btnCancelText, { color: theme.textSecondary }]}>Cancel</Text>
+        </TouchableOpacity>
+        <TouchableOpacity onPress={() => onSave(pending)} style={[dtStyles.btn, { backgroundColor: theme.accent }]}>
+          <Text style={dtStyles.btnSaveText}>Save</Text>
+        </TouchableOpacity>
+      </View>
+    </View>
+  );
+}
+
+const dtStyles = StyleSheet.create({
+  container: { marginTop: 8 },
+  row: { flexDirection: 'row', gap: 8, marginBottom: 4 },
+  pill: { flex: 1, borderRadius: 8, borderWidth: 1, paddingHorizontal: 10, paddingVertical: 8, alignItems: 'center' },
+  pillText: { fontSize: 13, fontWeight: '500' },
+  buttons: { flexDirection: 'row', gap: 8, marginTop: 8 },
+  btn: { flex: 1, paddingVertical: 8, borderRadius: 8, alignItems: 'center', borderWidth: 1 },
+  btnCancelText: { fontSize: 14, fontWeight: '500' },
+  btnSaveText: { fontSize: 14, fontWeight: '600', color: '#fff' },
+});
+
 // ── Note card ─────────────────────────────────────────────────────────────────
 
-function NoteCard({ item, friendId, onUpdate, onDelete, theme }: {
+function NoteCard({ item, friendId, onUpdate, onDelete, onChangeDate, theme }: {
   item: Extract<TimelineItem, { kind: 'note' }>;
   friendId: string;
   onUpdate: (noteId: string, updates: Partial<Pick<FriendNote, 'content' | 'pinned'>>) => void;
   onDelete: (friendId: string, noteId: string) => void;
+  onChangeDate: (noteId: string, newCreatedAt: number) => void;
   theme: ReturnType<typeof useTheme>['theme'];
 }) {
   const { note } = item;
   const [editing, setEditing] = useState(false);
+  const [editingDate, setEditingDate] = useState(false);
   const [draft, setDraft] = useState(note.content);
 
   const handleSave = () => {
@@ -99,12 +195,14 @@ function NoteCard({ item, friendId, onUpdate, onDelete, theme }: {
       { backgroundColor: theme.card, borderColor: note.pinned ? theme.accent : theme.border },
     ]}>
       <View style={styles.noteHeader}>
-        <Text style={[styles.noteDate, { color: theme.textSecondary }]}>{formatDate(note.createdAt)}</Text>
+        <TouchableOpacity onPress={() => setEditingDate(true)}>
+          <Text style={[styles.noteDate, { color: theme.textSecondary }]}>{formatDate(note.createdAt)}</Text>
+        </TouchableOpacity>
         <View style={styles.noteActions}>
           <TouchableOpacity onPress={() => onUpdate(note.id, { pinned: !note.pinned })} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
             <Ionicons name={note.pinned ? 'bookmark' : 'bookmark-outline'} size={18} color={note.pinned ? theme.accent : theme.textSecondary} />
           </TouchableOpacity>
-          {!editing && (
+          {!editing && !editingDate && (
             <TouchableOpacity onPress={handleDelete} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }} style={{ marginLeft: 12 }}>
               <Ionicons name="trash-outline" size={16} color={theme.danger} />
             </TouchableOpacity>
@@ -112,7 +210,14 @@ function NoteCard({ item, friendId, onUpdate, onDelete, theme }: {
         </View>
       </View>
 
-      {editing ? (
+      {editingDate ? (
+        <DateTimeEditor
+          initial={new Date(note.createdAt)}
+          onSave={date => { onChangeDate(note.id, date.getTime()); setEditingDate(false); }}
+          onCancel={() => setEditingDate(false)}
+          theme={theme}
+        />
+      ) : editing ? (
         <>
           <TextInput
             style={[styles.editInput, { color: theme.textPrimary, borderColor: theme.border, backgroundColor: theme.input }]}
@@ -140,23 +245,51 @@ function NoteCard({ item, friendId, onUpdate, onDelete, theme }: {
   );
 }
 
-function CheckInRow({ ts, theme, onConvertToNote }: {
+function CheckInRow({ ts, theme, onConvertToNote, onChangeDate }: {
   ts: number;
   theme: ReturnType<typeof useTheme>['theme'];
   onConvertToNote: (ts: number, content: string) => void;
+  onChangeDate: (oldTs: number, newTs: number) => void;
 }) {
-  const [editing, setEditing] = useState(false);
+  const [mode, setMode] = useState<'idle' | 'editingNote' | 'editingDate'>('idle');
   const [draft, setDraft] = useState('');
 
-  const handleSave = () => {
-    if (draft.trim()) onConvertToNote(ts, draft.trim());
-    setDraft('');
-    setEditing(false);
+  const handleLongPress = () => {
+    const title = `Checked in · ${formatDate(ts)} · ${formatTime(ts)}`;
+    if (Platform.OS === 'ios') {
+      ActionSheetIOS.showActionSheetWithOptions(
+        { title, options: ['Cancel', 'Change Date', 'Convert to Note'], cancelButtonIndex: 0 },
+        i => { if (i === 1) setMode('editingDate'); else if (i === 2) setMode('editingNote'); },
+      );
+    } else {
+      Alert.alert(title, undefined, [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Change Date', onPress: () => setMode('editingDate') },
+        { text: 'Convert to Note', onPress: () => setMode('editingNote') },
+      ]);
+    }
   };
 
-  const handleCancel = () => { setDraft(''); setEditing(false); };
+  if (mode === 'editingDate') {
+    return (
+      <View style={[styles.checkInCard, { backgroundColor: theme.card, borderColor: theme.border }]}>
+        <Text style={[styles.checkInCardDate, { color: theme.textSecondary }]}>{formatDate(ts)} · {formatTime(ts)}</Text>
+        <DateTimeEditor
+          initial={new Date(ts)}
+          onSave={date => { onChangeDate(ts, date.getTime()); setMode('idle'); }}
+          onCancel={() => setMode('idle')}
+          theme={theme}
+        />
+      </View>
+    );
+  }
 
-  if (editing) {
+  if (mode === 'editingNote') {
+    const handleSave = () => {
+      if (draft.trim()) onConvertToNote(ts, draft.trim());
+      setDraft('');
+      setMode('idle');
+    };
     return (
       <View style={[styles.checkInCard, { backgroundColor: theme.card, borderColor: theme.border }]}>
         <Text style={[styles.checkInCardDate, { color: theme.textSecondary }]}>{formatDate(ts)}</Text>
@@ -171,7 +304,7 @@ function CheckInRow({ ts, theme, onConvertToNote }: {
           textAlignVertical="top"
         />
         <View style={styles.editButtons}>
-          <TouchableOpacity onPress={handleCancel} style={[styles.editBtn, { borderColor: theme.border }]}>
+          <TouchableOpacity onPress={() => { setDraft(''); setMode('idle'); }} style={[styles.editBtn, { borderColor: theme.border }]}>
             <Text style={[styles.editBtnCancelText, { color: theme.textSecondary }]}>Cancel</Text>
           </TouchableOpacity>
           <TouchableOpacity onPress={handleSave} style={[styles.editBtn, { backgroundColor: theme.accent }]}>
@@ -183,7 +316,7 @@ function CheckInRow({ ts, theme, onConvertToNote }: {
   }
 
   return (
-    <TouchableWithoutFeedback onLongPress={() => setEditing(true)} delayLongPress={400}>
+    <TouchableWithoutFeedback onLongPress={handleLongPress} delayLongPress={400}>
       <View style={styles.checkInRow}>
         <View style={[styles.checkInDot, { backgroundColor: theme.green }]} />
         <Text style={[styles.checkInText, { color: theme.textSecondary }]}>
@@ -198,6 +331,7 @@ function CheckInRow({ ts, theme, onConvertToNote }: {
 
 export function NotesModal({
   friend, visible, onClose, onUpdateNote, onDeleteNote, onConvertCheckIn,
+  onUpdateCheckInDate, onUpdateNoteDate,
   groups, onMoveGroup, onAddSignificantDate, onUpdateSignificantDate, onDeleteSignificantDate,
   onAddOneTimeEvent, onUpdateOneTimeEvent, onDeleteOneTimeEvent,
 }: Props) {
@@ -465,10 +599,16 @@ export function NotesModal({
                     friendId={friend.id}
                     onUpdate={(noteId, updates) => onUpdateNote(friend.id, noteId, updates)}
                     onDelete={onDeleteNote}
+                    onChangeDate={(noteId, newTs) => onUpdateNoteDate(friend.id, noteId, newTs)}
                     theme={theme}
                   />
                 ) : (
-                  <CheckInRow ts={item.ts} theme={theme} onConvertToNote={(ts, content) => onConvertCheckIn(friend.id, ts, content)} />
+                  <CheckInRow
+                    ts={item.ts}
+                    theme={theme}
+                    onConvertToNote={(ts, content) => onConvertCheckIn(friend.id, ts, content)}
+                    onChangeDate={(oldTs, newTs) => onUpdateCheckInDate(friend.id, oldTs, newTs)}
+                  />
                 )
               }
               contentContainerStyle={styles.list}

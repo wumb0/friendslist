@@ -18,7 +18,7 @@ const SECTIONS = [
   {
     icon: 'checkmark-circle-outline' as const,
     title: 'Checking In & Adding Notes',
-    body: 'Swipe a friend\'s card to the right to record a check-in. Swipe left to add a note about your interaction. If you already added a note today, swiping left re-opens it so you can update it. Long-pressing a check-in entry in the history converts it to a note.',
+    body: 'Swipe a friend\'s card to the right to record a check-in. Swipe left to add a note about your interaction. If you already added a note today, swiping left re-opens it so you can update it.',
   },
   {
     icon: 'calendar-outline' as const,
@@ -28,7 +28,7 @@ const SECTIONS = [
   {
     icon: 'time-outline' as const,
     title: 'Viewing History',
-    body: 'Tap any friend\'s card to open their history. The History tab shows all check-ins and notes in chronological order, with pinned notes at the top. Tap a note to edit it inline. Long-press a check-in to convert it to a note.',
+    body: 'Tap any friend\'s card to open their history. The History tab shows all check-ins and notes in chronological order, with pinned notes at the top. Tap a note to edit it inline. Long-press a check-in to change its date or convert it to a note. Tap the date on a note to edit when it was recorded.',
   },
   {
     icon: 'people-outline' as const,

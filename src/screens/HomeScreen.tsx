@@ -28,7 +28,7 @@ function getNoteSnippet(friend: Friend, query: string): string | undefined {
 
 export function HomeScreen() {
   const { theme } = useTheme();
-  const { friends, loading, addFriends, checkIn, addNote, updateNote, deleteNote, deleteFriend, convertCheckInToNote, moveToGroup, moveGroupMembers, renameFriend, addSignificantDate, updateSignificantDate, deleteSignificantDate, addOneTimeEvent, updateOneTimeEvent, deleteOneTimeEvent } = useFriends();
+  const { friends, loading, addFriends, checkIn, updateCheckInDate, addNote, updateNote, updateNoteDate, deleteNote, deleteFriend, convertCheckInToNote, moveToGroup, moveGroupMembers, renameFriend, addSignificantDate, updateSignificantDate, deleteSignificantDate, addOneTimeEvent, updateOneTimeEvent, deleteOneTimeEvent } = useFriends();
   const { groups, loading: groupsLoading, addGroup, updateGroup, deleteGroup } = useGroups(friends);
 
   const [activeGroupId, setActiveGroupId] = useState<string>('');
@@ -275,6 +275,8 @@ export function HomeScreen() {
         onUpdateNote={updateNote}
         onDeleteNote={deleteNote}
         onConvertCheckIn={convertCheckInToNote}
+        onUpdateCheckInDate={updateCheckInDate}
+        onUpdateNoteDate={updateNoteDate}
         groups={groups}
         onMoveGroup={moveToGroup}
         onAddSignificantDate={addSignificantDate}

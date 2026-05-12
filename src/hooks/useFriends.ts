@@ -43,6 +43,16 @@ export function useFriends() {
     dismissNotificationsForFriend(id);
   };
 
+  const updateCheckInDate = async (friendId: string, oldTs: number, newTs: number): Promise<void> => {
+    await repo.updateCheckInDate(friendId, oldTs, newTs);
+    await reload();
+  };
+
+  const updateNoteDate = async (friendId: string, noteId: string, newCreatedAt: number): Promise<void> => {
+    await repo.updateNoteDate(friendId, noteId, newCreatedAt);
+    await reload();
+  };
+
   const addNote = async (friendId: string, content: string): Promise<void> => {
     const note: FriendNote = { id: generateId(), content: content.trim(), createdAt: Date.now() };
     await repo.addNote(friendId, note);
@@ -129,7 +139,7 @@ export function useFriends() {
 
   return {
     friends, loading,
-    addFriends, checkIn, addNote, updateNote, deleteNote, deleteFriend,
+    addFriends, checkIn, updateCheckInDate, addNote, updateNote, updateNoteDate, deleteNote, deleteFriend,
     convertCheckInToNote, moveToGroup, moveGroupMembers, renameFriend,
     addSignificantDate, updateSignificantDate, deleteSignificantDate,
     addOneTimeEvent, updateOneTimeEvent, deleteOneTimeEvent,

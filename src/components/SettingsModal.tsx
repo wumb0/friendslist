@@ -1,8 +1,9 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Modal, View, Text, Switch, TouchableOpacity, StyleSheet, Platform, StatusBar } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme } from '../context/ThemeContext';
+import { HelpModal } from './HelpModal';
 
 interface Props {
   visible: boolean;
@@ -14,17 +15,22 @@ export function SettingsModal({ visible, onClose, onOpenGroups }: Props) {
   const { theme, settings, updateSettings } = useTheme();
   const insets = useSafeAreaInsets();
   const topPadding = Platform.OS === 'ios' ? insets.top + 14 : (StatusBar.currentHeight ?? 0) + 14;
+  const [showHelp, setShowHelp] = useState(false);
 
   return (
     <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
       <View style={[styles.container, { backgroundColor: theme.background }]}>
         <View style={[styles.header, { backgroundColor: theme.header, borderBottomColor: theme.border, paddingTop: topPadding }]}>
-          <View style={{ width: 60 }} />
+          <TouchableOpacity onPress={() => setShowHelp(true)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }} style={{ width: 60 }}>
+            <Ionicons name="help-circle-outline" size={26} color={theme.textSecondary} />
+          </TouchableOpacity>
           <Text style={[styles.title, { color: theme.textPrimary }]}>Settings</Text>
           <TouchableOpacity onPress={onClose} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
             <Text style={[styles.doneButton, { color: theme.accent }]}>Done</Text>
           </TouchableOpacity>
         </View>
+
+        <HelpModal visible={showHelp} onClose={() => setShowHelp(false)} />
 
         <Text style={[styles.sectionHeader, { color: theme.textSecondary }]}>Appearance</Text>
         <View style={[styles.card, { backgroundColor: theme.card }]}>

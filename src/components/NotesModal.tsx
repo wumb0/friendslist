@@ -82,23 +82,37 @@ function DateTimeEditor({ initial, onSave, onCancel, theme }: {
   const [pending, setPending] = useState(new Date(initial));
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [showTimePicker, setShowTimePicker] = useState(false);
+  const [futureError, setFutureError] = useState(false);
 
   const handleDateChange = (_: DateTimePickerEvent, date?: Date) => {
     if (Platform.OS === 'android') setShowDatePicker(false);
-    if (date) setPending(prev => {
-      const next = new Date(prev);
-      next.setFullYear(date.getFullYear(), date.getMonth(), date.getDate());
-      return next;
-    });
+    if (date) {
+      setFutureError(false);
+      setPending(prev => {
+        const next = new Date(prev);
+        next.setFullYear(date.getFullYear(), date.getMonth(), date.getDate());
+        return next;
+      });
+    }
   };
 
   const handleTimeChange = (_: DateTimePickerEvent, date?: Date) => {
     if (Platform.OS === 'android') setShowTimePicker(false);
-    if (date) setPending(prev => {
+    if (!date) return;
+    setFutureError(false);
+    setPending(prev => {
       const next = new Date(prev);
       next.setHours(date.getHours(), date.getMinutes(), 0, 0);
       return next;
     });
+  };
+
+  const handleSave = () => {
+    if (pending.getTime() > Date.now()) {
+      setFutureError(true);
+      return;
+    }
+    onSave(pending);
   };
 
   return (
@@ -117,6 +131,12 @@ function DateTimeEditor({ initial, onSave, onCancel, theme }: {
           <Text style={[dtStyles.pillText, { color: theme.textPrimary }]}>{formatTime(pending.getTime())}</Text>
         </TouchableOpacity>
       </View>
+
+      {futureError && (
+        <View style={[dtStyles.toast, { backgroundColor: theme.card, borderColor: theme.border }]}>
+          <Text style={[dtStyles.toastText, { color: theme.danger }]}>Date cannot be in the future.</Text>
+        </View>
+      )}
 
       {showDatePicker && (
         <DateTimePicker
@@ -140,7 +160,13 @@ function DateTimeEditor({ initial, onSave, onCancel, theme }: {
         <TouchableOpacity onPress={onCancel} style={[dtStyles.btn, { borderColor: theme.border }]}>
           <Text style={[dtStyles.btnCancelText, { color: theme.textSecondary }]}>Cancel</Text>
         </TouchableOpacity>
-        <TouchableOpacity onPress={() => onSave(pending)} style={[dtStyles.btn, { backgroundColor: theme.accent }]}>
+        <TouchableOpacity
+          onPress={() => { setFutureError(false); setPending(new Date()); }}
+          style={[dtStyles.btn, { borderColor: theme.border }]}
+        >
+          <Text style={[dtStyles.btnCancelText, { color: theme.accent }]}>Now</Text>
+        </TouchableOpacity>
+        <TouchableOpacity onPress={handleSave} style={[dtStyles.btn, { backgroundColor: theme.accent }]}>
           <Text style={dtStyles.btnSaveText}>Save</Text>
         </TouchableOpacity>
       </View>
@@ -153,6 +179,8 @@ const dtStyles = StyleSheet.create({
   row: { flexDirection: 'row', gap: 8, marginBottom: 4 },
   pill: { flex: 1, borderRadius: 8, borderWidth: 1, paddingHorizontal: 10, paddingVertical: 8, alignItems: 'center' },
   pillText: { fontSize: 13, fontWeight: '500' },
+  toast: { borderRadius: 8, borderWidth: 1, paddingHorizontal: 10, paddingVertical: 7, marginBottom: 4 },
+  toastText: { fontSize: 13, fontWeight: '500' },
   buttons: { flexDirection: 'row', gap: 8, marginTop: 8 },
   btn: { flex: 1, paddingVertical: 8, borderRadius: 8, alignItems: 'center', borderWidth: 1 },
   btnCancelText: { fontSize: 14, fontWeight: '500' },
